@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { updateProbe, idlePose, lookAt } from './figures.js';
 
 /**
  * A resident you can talk to. `conversations` is a list of line arrays; each
@@ -41,6 +42,14 @@ export class NPC {
   update(dt, ctx) {
     this.t += dt;
     this.pos.copy(this.object.position);
+    // sculpted residents pick up the level's baked light where they stand
+    if (this.object.userData.mat) {
+      this.probeT = (this.probeT || 0) - dt;
+      if (this.probeT <= 0) {
+        this.probeT = 0.4;
+        updateProbe(this.object, this.world, this.object.position);
+      }
+    }
     if (!this.face || ctx.attract) return this.idle?.(dt, ctx);
     const p = ctx.player.pos;
     const dx = p.x - this.object.position.x;
@@ -52,6 +61,30 @@ export class NPC {
     this.idle?.(dt, ctx);
   }
 }
+
+/**
+ * A resident who wandered in from another level through a crossed signal.
+ * Humanoids stand about looking round, confused; anything else just idles.
+ */
+export function strayNPC(world, pos, { name, model, lines, voice = 1, radius = 0.35, onTalk = null, prompt = null, aimHeight = 1.2 }) {
+  model.position.copy(pos);
+  const npc = new NPC(world, { name, pos, model, voice, radius, face: false, conversations: lines, onTalk, prompt });
+  npc.aimHeight = aimHeight;
+  const rig = model.userData.rig;
+  const eye = new THREE.Vector3();
+  if (rig && rig.bones.hips) {
+    npc.idle = (dt, ctx) => {
+      idlePose(rig, npc.t);
+      if (npc.talking || ctx.player.pos.distanceTo(model.position) < 3) lookAt(model, eye.copy(ctx.camera.position), { max: 1 });
+      else rig.rot('head', 0.05, Math.sin(npc.t * 0.45) * 0.9, Math.sin(npc.t * 0.3) * 0.1);
+    };
+  }
+  return npc;
+}
+
+NPC.prototype.dispose = function () {
+  this.panner?.disconnect?.();
+};
 
 /** Shared toon-ish material helper for residents. */
 export function mat(color, extra = {}) {

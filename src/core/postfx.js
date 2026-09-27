@@ -79,6 +79,19 @@ export class PostFX {
     this.gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
     this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 10 });
     this.gtao.blendIntensity = 0.9;
+    // glow sprites and other see-through effects must not occlude in the AO
+    // pre-pass, or they leave dark squares on the walls behind them
+    this.gtao._overrideVisibility = function () {
+      const cache = this._visibilityCache;
+      this.scene.traverse((o) => {
+        const m = o.material;
+        if (!o.visible) return;
+        if (o.isPoints || o.isLine || o.isLine2 || o.isSprite || (m && !Array.isArray(m) && m.transparent && !m.depthWrite)) {
+          o.visible = false;
+          cache.push(o);
+        }
+      });
+    };
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.6, 0.85);
     this.output = new OutputPass();
     this.tape = new ShaderPass(TapeShader);
@@ -141,6 +154,8 @@ export class PostFX {
     this.u.uStatic.value = this.reduce ? Math.min(0.15, extra.static || 0) : extra.static || 0;
     this.u.uDesat.value = extra.desat || 0;
     this.u.uFlash.value = extra.flash || 0;
+    // crossed signals smear the colour channels apart
+    this.u.uChroma.value = (this.reduce ? 0 : this.base?.chroma ?? 0) + (this.reduce ? 0 : (extra.bleed || 0) * 0.005);
   }
 
   render(dt) {

@@ -454,6 +454,129 @@ export class AudioEngine {
     for (const [f, a] of [[98, 0.18], [196.5, 0.08], [264, 0.05], [417, 0.03]]) this.tone({ type: 'sine', f, t, a: 0.01, d: 7, peak: a * 0.5, send: 1.2, bus: this.musicBus });
   }
 
+  meow(p, pitch = 1) {
+    if (!this.ready) return;
+    const t = this.now;
+    const o = this.ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(520 * pitch, t);
+    o.frequency.linearRampToValueAtTime(760 * pitch, t + 0.18);
+    o.frequency.linearRampToValueAtTime(430 * pitch, t + 0.55);
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.Q.value = 5;
+    f.frequency.setValueAtTime(900, t);
+    f.frequency.linearRampToValueAtTime(1800, t + 0.2);
+    f.frequency.linearRampToValueAtTime(1000, t + 0.55);
+    const g = this.ctx.createGain();
+    this.env(g, t, 0.06, 0.5, 0.3);
+    o.connect(f).connect(g).connect(p || this.sfxBus);
+    const r = this.ctx.createGain();
+    r.gain.value = 0.2;
+    g.connect(r).connect(this.reverb);
+    o.start(t);
+    o.stop(t + 0.7);
+  }
+
+  purr(p, seconds = 2) {
+    if (!this.ready) return;
+    const t = this.now;
+    const n = Math.floor(seconds * 26);
+    for (let i = 0; i < n; i++) this.burst({ type: 'lowpass', freq: 160, q: 1.5, t: t + i / 26, a: 0.008, d: 0.03, peak: 0.12 * Math.sin((i / n) * Math.PI), send: 0.05, dest: p });
+  }
+
+  /** A hollow plastic clack (mannequin joints, plastic buckets). */
+  clack(p, pitch = 1) {
+    if (!this.ready) return;
+    const t = this.now;
+    this.burst({ type: 'bandpass', freq: 1800 * pitch, q: 4, t, a: 0.001, d: 0.05, peak: 0.4, send: 0.3, dest: p });
+    this.tone({ type: 'triangle', f: 620 * pitch, f2: 540 * pitch, t, a: 0.001, d: 0.09, peak: 0.12, send: 0.3, dest: p });
+  }
+
+  /** "Kon": a yellow plastic bath bucket set down on tile. */
+  bucket(p) {
+    if (!this.ready) return;
+    const t = this.now;
+    this.tone({ type: 'sine', f: 330, f2: 310, t, a: 0.001, d: 0.35, peak: 0.3, send: 1.2, dest: p });
+    this.tone({ type: 'triangle', f: 990, f2: 950, t, a: 0.001, d: 0.12, peak: 0.06, send: 1.2, dest: p });
+    this.burst({ type: 'bandpass', freq: 2400, q: 3, t, a: 0.001, d: 0.03, peak: 0.2, send: 1, dest: p });
+  }
+
+  honk(p, pattern = [0.25]) {
+    if (!this.ready) return;
+    let t = this.now;
+    for (const len of pattern) {
+      for (const f of [410, 520]) this.tone({ type: 'square', f, t, a: 0.01, d: len, peak: 0.05, send: 0.6, dest: p });
+      t += len + 0.12;
+    }
+  }
+
+  /** Car alarm chirp (lock / unlock). */
+  chirp(p, n = 2) {
+    if (!this.ready) return;
+    const t = this.now;
+    for (let i = 0; i < n; i++) this.tone({ type: 'square', f: 2400, f2: 2200, t: t + i * 0.16, a: 0.003, d: 0.08, peak: 0.04, send: 0.8, dest: p });
+  }
+
+  /** The alarm proper: a rising, falling siren for a few seconds. */
+  carAlarm(p, seconds = 4) {
+    if (!this.ready) return;
+    const t = this.now;
+    const o = this.ctx.createOscillator();
+    o.type = 'square';
+    for (let i = 0; i < seconds * 2; i++) {
+      o.frequency.setValueAtTime(900, t + i * 0.5);
+      o.frequency.linearRampToValueAtTime(1600, t + i * 0.5 + 0.45);
+    }
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 2500;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.05, t + 0.05);
+    g.gain.setValueAtTime(0.05, t + seconds - 0.1);
+    g.gain.linearRampToValueAtTime(0, t + seconds);
+    o.connect(f).connect(g).connect(p || this.sfxBus);
+    const r = this.ctx.createGain();
+    r.gain.value = 0.5;
+    g.connect(r).connect(this.reverb);
+    o.start(t);
+    o.stop(t + seconds + 0.1);
+  }
+
+  beep(p, pitch = 1, n = 2) {
+    if (!this.ready) return;
+    const t = this.now;
+    for (let i = 0; i < n; i++) this.tone({ type: 'sine', f: 1760 * pitch * (i % 2 ? 1.26 : 1), t: t + i * 0.12, a: 0.003, d: 0.08, peak: 0.06, send: 0.3, dest: p });
+  }
+
+  snore(p) {
+    if (!this.ready) return;
+    const t = this.now;
+    this.burst({ type: 'lowpass', freq: 220, q: 4, t, a: 0.6, d: 0.9, peak: 0.25, send: 0.3, dest: p, sweep: 140 });
+    this.burst({ type: 'bandpass', freq: 900, q: 2, t: t + 1.6, a: 0.4, d: 0.6, peak: 0.08, send: 0.3, dest: p });
+  }
+
+  splash(p, big = 1) {
+    if (!this.ready) return;
+    const t = this.now;
+    this.burst({ type: 'bandpass', freq: 1200, q: 0.8, t, a: 0.005, d: 0.4 * big, peak: 0.35, send: 0.8, dest: p, sweep: 500 });
+    for (let i = 0; i < 5; i++) {
+      const f = 900 + Math.random() * 1800;
+      this.tone({ f, f2: f * 1.6, t: t + 0.05 + Math.random() * 0.3, d: 0.05, peak: 0.04, send: 1, dest: p });
+    }
+  }
+
+  /** Short digital tearing noise for glitches between levels. */
+  glitch(level = 1) {
+    if (!this.ready) return;
+    const t = this.now;
+    for (let i = 0; i < 5; i++) {
+      this.tone({ type: 'square', f: 80 + Math.random() * 1400, t: t + i * 0.03, a: 0.001, d: 0.03, peak: 0.03 * level, send: 0.1 });
+    }
+    this.burst({ type: 'highpass', freq: 3000, t, a: 0.001, d: 0.15, peak: 0.1 * level, send: 0.2 });
+  }
+
   // ---- fear & heartbeat ------------------------------------------------------
 
   setFear(level) {
@@ -476,26 +599,37 @@ export class AudioEngine {
       }
     }
     if (this.ambience) this.ambience.update(dt);
+    if (this.bleedAmb) this.bleedAmb.update(dt);
   }
 
   // ---- ambience ------------------------------------------------------------
 
-  setAmbience(kind) {
+  setAmbience(kind, bleed = null) {
     if (!this.ready) return;
     if (this.ambience) this.ambience.stop();
+    if (this.bleedAmb) this.bleedAmb.stop();
     this.ambience = kind ? new Ambience(this, kind) : null;
+    // a second level's ambience leaking in; its gain follows setBleed()
+    this.bleedAmb = bleed && bleed !== kind ? new Ambience(this, bleed, 0) : null;
+  }
+
+  /** How much of the bleeding level can be heard (0..1). */
+  setBleed(v) {
+    if (!this.bleedAmb) return;
+    this.bleedAmb.out.gain.setTargetAtTime(v * 0.9, this.now, 0.3);
+    this.ambience?.out.gain.setTargetAtTime(1 - v * 0.6, this.now, 0.3);
   }
 }
 
 class Ambience {
-  constructor(engine, kind) {
+  constructor(engine, kind, level = 1) {
     this.e = engine;
     this.kind = kind;
     const ctx = engine.ctx;
     this.nodes = [];
     this.out = ctx.createGain();
     this.out.gain.value = 0;
-    this.out.gain.setTargetAtTime(1, ctx.currentTime, 1.2);
+    this.out.gain.setTargetAtTime(level, ctx.currentTime, 1.2);
     this.out.connect(engine.musicBus);
     const send = ctx.createGain();
     send.gain.value = 0.4;
@@ -510,6 +644,9 @@ class Ambience {
       school: () => this.school(),
       station: () => this.station(),
       shrine: () => this.shrine(),
+      mall: () => this.mall(),
+      garage: () => this.garage(),
+      bath: () => this.bath(),
     }[kind];
     if (setup) setup();
   }
@@ -622,10 +759,75 @@ class Ambience {
     this.melody = 62;
   }
 
+  // Dead mall: muzak from ceiling speakers, a little too slow, a little detuned
+  mall() {
+    this.noiseLayer('lowpass', 500, 0.5, 0.02);
+    const lp = this.filtered('lowpass', 1400, 0.7);
+    const wob = this.e.ctx.createDelay(0.05);
+    wob.delayTime.value = 0.012;
+    this.lfo(wob.delayTime, 0.35, 0.004);
+    wob.connect(lp);
+    this.muzak = wob;
+    this.pad = [50, 57, 62, 66].map((n) => this.osc('triangle', NOTE(n) * 0.995, 0.006, lp));
+    this.melody = 74;
+  }
+
+  // Parking garage: ventilation, sodium ballast buzz, the building settling
+  garage() {
+    const g = this.noiseLayer('lowpass', 140, 0.8, 0.06);
+    this.lfo(g.gain, 0.05, 0.02);
+    const bp = this.filtered('bandpass', 100, 8);
+    this.osc('sawtooth', 100, 0.01, bp);
+    this.noiseLayer('bandpass', 2600, 8, 0.004);
+  }
+
+  // Bathhouse: running water into the big bath, tiles, steam
+  bath() {
+    const g = this.noiseLayer('bandpass', 1300, 0.6, 0.035);
+    this.lfo(g.gain, 0.3, 0.01);
+    this.noiseLayer('lowpass', 300, 0.7, 0.03);
+  }
+
   update(dt) {
     const e = this.e;
     const t = e.now;
     switch (this.kind) {
+      case 'mall':
+        this.every('note', 0.45, 0.9, dt, () => {
+          const scale = [62, 64, 66, 69, 71, 74, 76, 78, 81];
+          let idx = scale.indexOf(this.melody);
+          if (idx < 0) idx = 5;
+          idx = Math.max(0, Math.min(scale.length - 1, idx + Math.floor(Math.random() * 5) - 2));
+          this.melody = scale[idx];
+          if (Math.random() < 0.3) return;
+          e.tone({ type: 'sine', f: NOTE(this.melody) * 0.995, d: 1.4, peak: 0.03, send: 0.6, dest: this.muzak });
+          e.tone({ type: 'triangle', f: NOTE(this.melody + 12) * 0.995, d: 0.5, peak: 0.006, send: 0.6, dest: this.muzak });
+        });
+        this.every('chord', 5, 7, dt, () => {
+          const chords = [[50, 57, 62, 66], [55, 59, 62, 67], [47, 54, 59, 62], [52, 57, 61, 64]];
+          const c = chords[(this.step++) % chords.length];
+          this.pad.forEach((p, i) => p.o.frequency.setTargetAtTime(NOTE(c[i]) * 0.995, t, 0.8));
+        });
+        this.every('pa', 35, 70, dt, () => {
+          [72, 76, 79, 84].forEach((n, i) => e.tone({ type: 'sine', f: NOTE(n), t: t + i * 0.25, d: 0.9, peak: 0.02, send: 1.4, bus: this.out }));
+        });
+        break;
+      case 'garage':
+        this.every('drip', 3, 9, dt, () => e.tone({ f: 1800 + Math.random() * 900, f2: 900, d: 0.04, peak: 0.03, send: 1.5, bus: this.out }));
+        this.every('car', 25, 60, dt, () => {
+          // a car somewhere on another level, going round and round
+          e.burst({ type: 'lowpass', freq: 180, q: 1, t, a: 2, d: 3, peak: 0.12, send: 1, bus: this.out, sweep: 90 });
+          e.burst({ type: 'bandpass', freq: 700, q: 4, t: t + 2.2, a: 0.05, d: 0.4, peak: 0.03, send: 1.4, bus: this.out, sweep: 500 });
+        });
+        this.every('clank', 15, 40, dt, () => e.burst({ type: 'bandpass', freq: 500, q: 8, t, a: 0.001, d: 0.3, peak: 0.05, send: 1.6, bus: this.out }));
+        break;
+      case 'bath':
+        this.every('drip', 0.8, 3, dt, () => {
+          const f = 1200 + Math.random() * 1400;
+          e.tone({ f, f2: f * 0.6, d: 0.05, peak: 0.05, send: 2, bus: this.out });
+        });
+        this.every('kon', 20, 45, dt, () => e.bucket(this.out));
+        break;
       case 'hum':
         this.every('far', 14, 32, dt, () => {
           if (Math.random() < 0.5) e.burst({ type: 'lowpass', freq: 160, a: 0.01, d: 0.6, peak: 0.12, send: 1, bus: this.out });

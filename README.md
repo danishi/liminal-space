@@ -5,8 +5,13 @@ There is nothing to win. You drift from one empty place to the next.
 
 **Play:** https://danishi.github.io/liminal-space/
 
-No image or audio files are shipped: every texture is painted on a canvas at load time (including
-PBR normal and roughness maps), and every sound is synthesised with the Web Audio API.
+[![Liminal Drift highlight reel](public/media/highlight.gif)](https://danishi.github.io/liminal-space/media/highlight.mp4)
+
+▶ **Highlight reel** (38 s, 1280×720, with sound): [watch on GitHub Pages](https://danishi.github.io/liminal-space/media/highlight.mp4)
+· [public/media/highlight.mp4](public/media/highlight.mp4)
+
+Characters are sculpted in code, signs and posters are painted on canvas, every sound is synthesised
+with the Web Audio API, and the photo-scanned textures and models are CC0 assets from Poly Haven.
 
 ## How it works
 
@@ -19,6 +24,38 @@ PBR normal and roughness maps), and every sound is synthesised with the Web Audi
   flickering lights, murkier water, greyer skies, more holes, and apparitions that stand and watch.
   They never hurt you.
 - Some residents will talk to you.
+- **Crossed signals:** once you've drifted a few times, a level may have a patch of somewhere you've
+  already been leaking into it. Walls, floor and ceiling from the other level show through in corrupted
+  blocks, its furniture turns up, one of its residents wanders in looking confused, its ambience bleeds
+  over this one and the HUD can't decide which level you're on.
+
+## Residents and apparitions
+
+Every character is sculpted in code: signed-distance primitives (spheres, ellipsoids, round cones,
+boxes, tori) are blended with smooth unions and carved with smooth subtractions, then turned into a
+mesh with narrow-band surface nets. Each primitive carries a paint region and a bone, so the same pass
+gives vertex colours, per-vertex roughness and automatic skin weights. Heads and hands are sculpted at
+a finer resolution and ride on their bones; eyes are real glossy eyeballs. Characters are animated
+procedurally (walk cycles, breathing, head tracking, poses) and pick up the level's baked light through
+a light probe.
+
+- **The Watcher** stands at the end of hallways. Its head follows you further than a neck should
+  turn, it tilts at the wrong moments, and if you stare long enough it gives you a slow, polite wave.
+  Deeper in, one walks upside down along the ceiling.
+- **Mannequins** only move when nobody is looking. Each time you look back they're closer and posing
+  differently: peace signs and dabs while things are calm, reaching for you when they aren't. If one
+  gets right behind you and you turn round, it falls to pieces. You can poke them.
+- **Something peeks round corners** and ducks back when you look straight at it.
+- **The grin** in the dark hotel has a mouth full of teeth; shine your light on it and it shakes its
+  head very fast before it goes.
+- **A cat** turns up where you're about to look, loafing or sitting, and sometimes on the ceiling.
+  You can pet it.
+- **A robot vacuum** has been cleaning the same room since 1998. Far enough out, it follows you.
+- Residents: the Drifter (asleep in a hazmat suit, snoring through the mask), a ghostly bellboy who
+  bows, a station attendant who bows properly, students made of dusk, a white fox that sits like a
+  shrine statue, a mall guard asleep on the job, a parking attendant, a bathhouse keeper and his
+  capybaras. Residents of one level sometimes wander into another through a crossed signal, and are
+  not happy about it.
 
 ## Levels
 
@@ -31,6 +68,9 @@ PBR normal and roughness maps), and every sound is synthesised with the Web Audi
 | LEVEL 8 | Last-Train Underpass 終電後の地下通路 | Fluorescent, empty (Japan) | The station attendant; don't step onto the tracks |
 | LEVEL 1000 | Thousand Gates 千本鳥居 | Mystical, night (Japan) | The white fox, stone lanterns, a thousand torii |
 | LEVEL 11 | The Night Hotel | Dark, eerie | The bellboy, a grin in the dark |
+| LEVEL 94 | The Dead Mall | Warm, hollow | A security guard asleep at his desk, display mannequins that change pose, stopped escalators, a kiddie ride that plays to nobody, odd PA announcements |
+| LEVEL 6 | Parking Level P6 | Sodium-dark | The parking attendant and his barrier, cars that lock themselves as you pass, a car that honks a tune, a driverless car that creeps closer when you look away |
+| LEVEL 26 | Midnight Bathhouse 深夜の銭湯 | Steamy, Shōwa (Japan) | The keeper on the bandai, capybaras soaking with yuzu, Kerorin buckets, a Fuji mural that goes wrong the further you go |
 
 ## Controls
 
@@ -93,10 +133,12 @@ npm run preview
 
 ```
 src/
-  core/      grid (2.5D height field), procedural surfaces and textures, audio, input,
-             post-processing, light pool
-  game/      game loop and drifting, player (steering assist, gravity), world (collision, unease, doors)
-  entities/  residents (NPC), doors to other levels, apparitions
+  core/      grid (2.5D height field), SDF sculpting (surface nets, auto skinning), procedural
+             surfaces and textures, audio, input, post-processing, light pool
+  game/      game loop and drifting, player (steering assist, gravity), world (collision, unease, doors),
+             crossed signals (levels bleeding into each other)
+  entities/  sculpted characters (figures: humanoid and quadruped rigs, poses; looks: the cast),
+             residents (NPC), doors to other levels, apparitions
   props/     prop kit (batched merging), prop library, canvas-painted signs and posters
   stages/    one module per level, plus shared shell/decoration helpers
   ui/        screens, HUD, maps

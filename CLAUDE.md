@@ -39,8 +39,8 @@ in real time.
   `unease(i, j)` gradient, doors to other levels, entities. Stage modules fill it in.
 - `src/game/game.js` — renderer, post-processing, reflection probe capture, the drift flow, HUD updates.
 - `src/game/player.js` — movement, keyboard turning, steering assist, gravity and falling.
-- `src/stages/*.js` — one module per level. Contract: `{ id, code, name, sub, tint, build(world),
-  makeDoor(world, destStage) }`. In `build`, carve the grid, set `world.spawn`, call
+- `src/stages/*.js` — one module per level. Contract: `{ id, code, name, sub, tint, assets, build(world),
+  makeDoor(world, destStage), bleed? }`. In `build`, carve the grid, set `world.spawn`, call
   `world.finalizeLayout()` (seals unreachable pockets and computes distances), then build geometry,
   lights, props (`decorate` with a prop table), residents and apparitions, and fill `world.env`.
 - `src/stages/common.js` — `buildShell`, `ceilingFixtures`, `doorModel`, `decorate`, `stairRun`.
@@ -54,6 +54,21 @@ in real time.
   texture to its real-world size given the geometry's UV scale. `PropKit.model()` and
   `P.modelProp(id)` place models; model materials are shared (`userData.shared`) and never disposed.
 - `src/core/surfaces.js` — procedural PBR surfaces (colour + normal + roughness), cached by key.
+- `src/core/sculpt.js` — SDF sculpting: a `Sculpt` collects primitives (`sphere`, `ellipsoid`, `cone`
+  (round cone), `box`, `cyl`, `torus`, with `k` blend, `bone`, `mat` paint region, `cut`, `rot`, `clip`,
+  `noise`), `sculptGeometry` polygonises it (narrow-band surface nets, cached by key) with vertex colours,
+  `rough`/`emit` attributes and optional skin weights, `skinnedSculpt` builds a SkinnedMesh from named
+  joints, `sculptMaterial` adds triplanar detail normals and a light-probe uniform.
+- `src/entities/figures.js` — humanoid (`human`) and quadruped (`beast`) rigs on top of sculpt.js: a
+  skinned body plus finer head and hands on their bones; `Rig`, `POSES`, `applyPose`, `walkPose`,
+  `idlePose`, `lookAt`, `beastPose`, `setFigureOpacity` (alpha-hashed fades), `updateProbe`.
+  `src/entities/looks.js` is the cast (`LOOKS.watcher()`, `.mannequin()`, `.attendant()`, …, `carModel`,
+  `grinFace`, `robotVacuum`) and `prewarm()`; stages list the looks they use in `assets.looks` so they are
+  built during loading. Sculpted meshes set `userData.noBake` and get light from `world.probe()` instead.
+- `src/game/bleed.js` — crossed signals: `pickBleed` chooses earlier levels to leak in, `applyBleed`
+  overlays a donor's surfaces (glitch-discard shader), props and a stray resident in a zone before
+  baking. Stages opt in with a `bleed` block: `{ ambience, looks, surfaces() → { wall, floor, ceil } (each a
+  material or { mat, uv }), props (decorate spec), stray(world, pos) → entity }`.
 - `src/core/bake.js` — per-vertex baked lighting and AO (`bake` attribute, applied through a material
   shader patch). `World.bake()` runs after `stage.build`; light pool fixtures are sources automatically,
   extra sources go in `world.bakeSources`, and `world.env.bake` tunes it (`hemi`, `dynamic`, `bounce`,
@@ -69,6 +84,8 @@ in real time.
 - Keep the number of lights constant within a level (the flashlight always exists, light pools have a
   fixed size) to avoid shader recompiles mid-level.
 - Apparitions are never lethal. The game has no fail state.
+- Characters and organic props are sculpted in code (sculpt.js / figures.js), not imported; keep new
+  looks in looks.js and add them to the stage's `assets.looks`.
 - New content should respond to unease: use the `min`/`max` thresholds in prop tables and scale
   densities or effects with `world.depth` / `world.unease()`.
 - Match the surrounding code style: 2-space indentation, single quotes, semicolons, short comments

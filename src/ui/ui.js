@@ -112,6 +112,17 @@ export class UI {
     }
   }
 
+  /** Briefly shows another level's name in the HUD, garbled, then puts ours back. */
+  glitchStage(host, other, depth) {
+    const junk = '▒░▓█#%&?';
+    const garble = (t) => [...t].map((ch) => (Math.random() < 0.25 ? junk[(Math.random() * junk.length) | 0] : ch)).join('');
+    this.stageEl.textContent = garble(`${other.code} · ${other.name}`);
+    clearTimeout(this.glitchT);
+    this.glitchT = setTimeout(() => {
+      this.stageEl.textContent = `${host.code} · ${host.name}${depth ? ` · drift ${depth}` : ''}`;
+    }, 90 + Math.random() * 160);
+  }
+
   levelIntro(stage, depth) {
     $('lc-code').textContent = `${stage.code}${depth ? `  ·  DRIFT ${depth}` : ''}`;
     $('lc-name').textContent = stage.name;

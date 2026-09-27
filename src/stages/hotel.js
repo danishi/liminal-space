@@ -7,7 +7,9 @@ import { LightPool } from '../core/lights.js';
 import { PropKit } from '../props/kit.js';
 import { photo, model } from '../core/assets.js';
 import * as P from '../props/library.js';
-import { Watcher, Grin } from '../entities/creatures.js';
+import { Watcher, Grin, Peeker, Mannequin, StrayCat } from '../entities/creatures.js';
+import { LOOKS } from '../entities/looks.js';
+import { setFigureOpacity, idlePose, lookAt } from '../entities/figures.js';
 import { NPC } from '../entities/npc.js';
 
 const H = 2.7;
@@ -58,32 +60,15 @@ function carveMaze(g, rng) {
 }
 
 function bellboyModel() {
+  const fig = LOOKS.bellboy();
+  setFigureOpacity(fig, 0.85);
   const g = new THREE.Group();
-  const ghost = (color) => new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.6, emissive: 0x5f7cff, emissiveIntensity: 0.35, roughness: 0.6, depthWrite: false });
-  const red = ghost(0x8a2432);
-  const dark = ghost(0x25283a);
-  const skin = ghost(0xb9c4e8);
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.75, 12), red);
-  body.position.y = 1.1;
-  g.add(body);
-  const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.16, 0.75, 12), dark);
-  legs.position.y = 0.38;
-  g.add(legs);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 12), skin);
-  head.position.y = 1.65;
-  g.add(head);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.1, 14), red);
-  cap.position.set(0.02, 1.8, 0);
-  cap.rotation.z = 0.15;
-  g.add(cap);
-  for (const x of [-0.26, 0.26]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.5, 4, 8), red);
-    arm.position.set(x, 1.1, 0.05);
-    g.add(arm);
-  }
-  const halo = glow(0x8fa6ff, 2.4, 0.25);
+  g.add(fig);
+  const halo = glow(0x8fa6ff, 2.4, 0.2);
   halo.position.y = 1.1;
   g.add(halo);
+  g.userData = fig.userData;
+  g.userData.fig = fig;
   return g;
 }
 
@@ -123,6 +108,7 @@ export default {
   assets: {
     textures: ['dark_paneled_wood', 'decrepit_wallpaper', 'dirty_carpet', 'ceiling_interior'],
     models: ['ArmChair_01', 'Sofa_01', 'CoffeeCart_01', 'Chandelier_02', 'ClassicNightstand_01', 'fancy_picture_frame_01', 'ornate_mirror_01', 'vintage_grandfather_clock_01', 'antique_ceramic_vase_01', 'vintage_suitcase'],
+    looks: ['bellboy', ['watcher', { hat: true, body: 0x0a0808 }], 'grin', ['mannequin', 2]],
   },
 
   build(world) {
@@ -306,8 +292,28 @@ export default {
           ['Thank you for staying with us. ...Checkout is whenever you like.'],
         ],
       });
-      npc.idle = () => {
-        model.position.y = baseY + 0.05 + Math.sin(npc.t * 1.4) * 0.04;
+      // floats a little off the carpet, flickers, and bows when you first come near
+      let bow = 0;
+      let bowed = false;
+      const eye = new THREE.Vector3();
+      npc.idle = (dt, ctx) => {
+        model.position.y = baseY + 0.12 + Math.sin(npc.t * 1.4) * 0.05;
+        const rig = model.userData.rig;
+        const near = ctx.player.pos.distanceTo(model.position) < 3.2;
+        if (near && !bowed && !ctx.attract) {
+          bowed = true;
+          bow = 0.001;
+        }
+        if (bow) bow = bow + dt * 0.6;
+        if (bow > 2) bow = 0;
+        idlePose(rig, npc.t);
+        rig.rot('armL', 0, 0, 0.08);
+        rig.rot('armR', -0.25, 0, -0.1);
+        rig.rot('foreR', -1.3, 0, 0.2);
+        if (bow) rig.blend({ spine: [0.4, 0, 0], chest: [0.35, 0, 0], neck: [0.2, 0, 0] }, Math.sin(Math.min(1, bow / 2) * Math.PI));
+        else lookAt(model, eye.copy(ctx.camera.position), { max: 0.9 });
+        const flick = Math.random() < 0.02 ? 0.35 : 0.8 + Math.sin(npc.t * 7) * 0.05;
+        setFigureOpacity(model.userData.fig, flick);
       };
       world.add(npc);
     }
@@ -315,7 +321,48 @@ export default {
     if (!world.attract) {
       world.add(new Grin(world));
       world.add(new Watcher(world, { look: { hat: true, body: 0x0a0808 } }));
+      world.add(new Peeker(world, { look: { hat: true, body: 0x0a0808 } }));
+      if (world.depth >= 2) world.add(new Watcher(world, { look: { hat: true, body: 0x0a0808 }, ceiling: true }));
+      if (rng.chance(0.4)) world.add(new StrayCat(world));
+      // a guest in evening wear waiting for the lift, in a pose
+      const spots = world.pickFarCells(1 + Math.min(2, world.depth), { minFrac: 0.4, spacing: 6, filter: (i, j) => g.standable(i, j) && !g.ramp[j * W + i] && g.countSolidNeighbors(i, j) <= 1 });
+      spots.forEach(([i, j], k) => {
+        const c = g.center(i, j);
+        world.add(new Mannequin(world, { pos: new THREE.Vector3(c.x, g.heightOf(i, j), c.z), yaw: rng.float(0, 6.28), variant: 2 - (k % 2), mode: 'creepy' }));
+      });
     }
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'hotel',
+    looks: ['bellboy'],
+    surfaces: () => {
+      const damask = wallpaperDamask().map.clone();
+      damask.repeat.set(2, 2);
+      return {
+        wall: { mat: photo('decrepit_wallpaper', { uvScale: 2.2, map: damask, normalScale: 0.8 }), uv: 2.2 },
+        floor: { mat: photo('dirty_carpet', { uvScale: 2.2, map: carpetHotel().map, normalScale: 1.1 }), uv: 2.2 },
+        ceil: { mat: photo('ceiling_interior', { uvScale: 3, color: 0xcdbb9c }), uv: 3 },
+      };
+    },
+    props: {
+      wall: [{ p: P.armchair, w: 1 }, { p: P.vaseTable, w: 1 }, { p: P.grandfatherClock, w: 0.5 }],
+      high: [{ p: P.painting, w: 1 }],
+      floor: [{ p: P.roomServiceCart, w: 1 }, { p: P.luggageCart, w: 1 }],
+      clutter: [{ p: P.suitcase, w: 1 }],
+    },
+    stray: (world, pos) => {
+      const model = bellboyModel();
+      model.position.copy(pos);
+      const baseY = pos.y;
+      const npc = new NPC(world, { name: 'the bellboy', pos, model, voice: 0.9, radius: 0.35, conversations: [
+        ['Your room is... hm.', 'This is not a room.'],
+        ['Housekeeping will be up shortly.', 'Housekeeping is also lost.'],
+      ] });
+      npc.idle = () => (model.position.y = baseY + 0.12 + Math.sin(npc.t * 1.4) * 0.05);
+      return npc;
+    },
   },
 
   makeDoor(world, dest) {

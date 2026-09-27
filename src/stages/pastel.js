@@ -8,7 +8,8 @@ import { PropKit } from '../props/kit.js';
 import { photo } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { NPC } from '../entities/npc.js';
-import { Watcher } from '../entities/creatures.js';
+import { sculptGeometry, sculptMaterial, recolor } from '../core/sculpt.js';
+import { Watcher, Mannequin, StrayCat } from '../entities/creatures.js';
 
 const WALL_H = 3.4;
 const COLORS = [0xf6b8cf, 0xcdb8f0, 0xb6e8d2, 0xfbe6a2, 0xb8dcf6];
@@ -24,25 +25,41 @@ const MOCHI_TALK = [
   [['The further you go from where you woke up, the greyer it gets.', 'We don’t go out that far.']],
 ];
 
+/** A sculpted mochi: soft, powdery, glossy little eyes and a blush that's part of the skin. */
+function mochiGeometry(color) {
+  const base = sculptGeometry('mochi', (sc) => {
+    sc.sphere([0, 0, 0], 0.45, { mat: 'body', noise: [0.002, 22] });
+    for (const x of [-1, 1]) {
+      sc.ellipsoid([x * 0.14, 0.08, 0.418], [0.042, 0.06, 0.03], { mat: 'eye', k: 0.012 });
+      sc.sphere([x * 0.125, 0.108, 0.447], 0.013, { mat: 'shine', k: 0.004 });
+      // just under the surface: colours the cheeks without changing the shape
+      sc.ellipsoid([x * 0.21, -0.03, 0.37], [0.07, 0.045, 0.026], { mat: 'cheek', k: 0, rot: [0, x * 0.45, 0] });
+    }
+    sc.cut(() => sc.ellipsoid([0, -0.015, 0.45], [0.028, 0.012, 0.02], { mat: 'mouth', k: 0.008 }));
+    return sc;
+  }, {
+    h: 0.009,
+    paints: {
+      body: { color: 0xffffff, rough: 0.6, vary: 0.03, freq: 30 },
+      eye: { color: 0x1e1622, rough: 0.08 },
+      shine: { color: 0xffffff, rough: 0.1, emit: 1.2 },
+      cheek: { color: 0xff7aa0, rough: 0.6 },
+      mouth: { color: 0x8a3a4a, rough: 0.5 },
+    },
+  });
+  return recolor(base, 'body', color);
+}
+
 function mochiModel(color) {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.45, 28, 18), new THREE.MeshPhysicalMaterial({ color, roughness: 0.55, sheen: 1, sheenColor: 0xffffff, sheenRoughness: 0.6 }));
+  const body = new THREE.Mesh(mochiGeometry(color), sculptMaterial({ detail: 'plastic', detailScale: 10, detailStrength: 0.12, physical: { sheen: 1, sheenColor: 0xffffff, sheenRoughness: 0.6 } }));
   body.scale.set(1, 0.78, 1);
   body.position.y = 0.35;
   body.castShadow = true;
+  body.userData.noBake = true;
   g.add(body);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0x2b2130, roughness: 0.1 });
-  for (const x of [-0.14, 0.14]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), eyeMat);
-    e.scale.set(1, 1.4, 0.5);
-    e.position.set(x, 0.08, 0.43);
-    body.add(e);
-    const blush = new THREE.Mesh(new THREE.CircleGeometry(0.06, 14), new THREE.MeshBasicMaterial({ color: 0xff8fb0, transparent: true, opacity: 0.6 }));
-    blush.position.set(x * 1.45, -0.02, 0.425);
-    blush.rotation.y = x * 1.4;
-    body.add(blush);
-  }
   g.userData.body = body;
+  g.userData.mat = body.material;
   return g;
 }
 
@@ -80,7 +97,7 @@ export default {
   name: 'Pastel Dreamscape',
   sub: 'Cotton-candy sky',
   tint: 0xffd6ee,
-  assets: { textures: ['beige_wall_001'], models: ['rubber_duck_toy'] },
+  assets: { textures: ['beige_wall_001'], models: ['rubber_duck_toy'], looks: [['mannequin', 0], ['mannequin', 1], ['mannequin', 2], 'cat'] },
 
   build(world) {
     const rng = world.rng;
@@ -342,6 +359,43 @@ export default {
       world.add(npc);
     }
     if (!world.attract && world.depth >= 2) world.add(new Watcher(world, { look: { body: 0xe8c8d8, eyes: 0x000000, height: 2.2 } }));
+    if (!world.attract) {
+      // mannequins that only ever strike silly poses here, until they don't
+      const cells = world.pickFarCells(2 + Math.min(2, world.depth), { minFrac: 0.3, spacing: 6, filter: (i, j) => g.standable(i, j) && !g.ramp[j * W + i] && g.countSolidNeighbors(i, j) === 0 });
+      cells.forEach(([i, j], k) => {
+        const c = g.center(i, j);
+        world.add(new Mannequin(world, { pos: new THREE.Vector3(c.x, g.heightOf(i, j), c.z), yaw: rng.float(0, 6.28), variant: k % 3, mode: world.depth >= 3 ? 'mixed' : 'funny' }));
+      });
+      if (rng.chance(0.6)) world.add(new StrayCat(world));
+    }
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'dream',
+    surfaces: () => ({
+      wall: { mat: photo('beige_wall_001', { uvScale: 3, color: new THREE.Color(0xf6b8cf).multiplyScalar(1.45), normalScale: 0.6 }), uv: 3 },
+      floor: { mat: pbr(checkerPastel()), uv: 4 },
+    }),
+    props: {
+      floor: [{ p: P.giantCandy, w: 1 }, { p: P.carouselHorse, w: 0.6 }, { p: P.gumball, w: 1 }],
+      clutter: [{ p: P.toyBlock, w: 2 }, { p: P.balloon, w: 2 }, { p: P.teddy, w: 1 }],
+    },
+    stray: (world, pos) => {
+      const model = mochiModel(0xffc4d8);
+      model.position.copy(pos);
+      const npc = new NPC(world, { name: 'Mochi', pos, model, voice: 1.9, radius: 0.45, conversations: [
+        ['Um. Hi. Where did all the colours go?'],
+        ['It’s so grey here. Is this what you people live in?', 'I’m going to roll back now. Which way is back?'],
+      ], onTalk: (game) => game.audio.boop(null, 1.1) });
+      npc.aimHeight = 0.4;
+      const body = model.userData.body;
+      npc.idle = () => {
+        // a nervous little wobble
+        body.scale.set(1 + Math.sin(npc.t * 9) * 0.02, 0.78 + Math.sin(npc.t * 9 + 1) * 0.02, 1);
+      };
+      return npc;
+    },
   },
 
   makeDoor(world, dest) {

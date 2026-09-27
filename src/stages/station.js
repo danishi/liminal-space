@@ -7,45 +7,17 @@ import { PropKit, keep } from '../props/kit.js';
 import { photo } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { signTexture } from '../props/canvas.js';
-import { Watcher, Follower } from '../entities/creatures.js';
-import { NPC, mat } from '../entities/npc.js';
+import { Watcher, Follower, Peeker, StrayCat } from '../entities/creatures.js';
+import { LOOKS } from '../entities/looks.js';
+import { idlePose, lookAt } from '../entities/figures.js';
+import { NPC, strayNPC } from '../entities/npc.js';
 
 const H = 2.9;
 const PLAT = -4; // platform level
 const TRACK = -5.3; // track bed
 
 function attendantModel() {
-  const g = new THREE.Group();
-  const navy = mat(0x1f2a44);
-  const skin = mat(0xd9b89a);
-  const white = mat(0xf2f2f2);
-  const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.14, 0.85, 12), navy);
-  legs.position.y = 0.43;
-  g.add(legs);
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.45, 4, 10), navy);
-  body.position.y = 1.15;
-  g.add(body);
-  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.08, 12), white);
-  collar.position.y = 1.44;
-  g.add(collar);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), skin);
-  head.position.y = 1.6;
-  g.add(head);
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.13, 0.08, 16), navy);
-  cap.position.y = 1.72;
-  g.add(cap);
-  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.015, 0.12), mat(0x111111, { roughness: 0.2 }));
-  brim.position.set(0, 1.69, 0.12);
-  g.add(brim);
-  for (const x of [-0.24, 0.24]) {
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.45, 4, 8), navy);
-    arm.position.set(x, 1.1, 0);
-    g.add(arm);
-    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), white);
-    glove.position.set(x, 0.8, 0);
-    g.add(glove);
-  }
-  return g;
+  return LOOKS.attendant();
 }
 
 /** Hanging bilingual sign (black with yellow text, like subway signage). */
@@ -88,6 +60,7 @@ export default {
   assets: {
     textures: ['long_white_tiles', 'concrete_floor_02', 'gravel'],
     models: ['korean_public_payphone_01', 'security_camera_01', 'utility_box_01', 'trashbag', 'vintage_suitcase', 'metal_trash_can', 'WetFloorSign_01'],
+    looks: ['attendant', ['watcher', { body: 0x16171a, suit: true, height: 2.2 }]],
   },
 
   build(world) {
@@ -248,7 +221,7 @@ export default {
     // resident: the station attendant by the gates
     const model = attendantModel();
     model.position.set(5.2 * cs, 0, 10.5 * cs);
-    world.add(new NPC(world, {
+    const attendant = world.add(new NPC(world, {
       name: 'the station attendant',
       pos: model.position.clone(),
       model,
@@ -260,11 +233,59 @@ export default {
         ['Thank you for riding with us.'],
       ],
     }));
+    // a proper bow when you come up to the gates, and another when you leave
+    let bow = 0;
+    let wasNear = false;
+    const eye = new THREE.Vector3();
+    attendant.idle = (dt, ctx) => {
+      const rig = model.userData.rig;
+      const near = ctx.player.pos.distanceTo(model.position) < 3;
+      if (near !== wasNear && !ctx.attract) bow = 0.001;
+      wasNear = near;
+      idlePose(rig, attendant.t, { sway: 0.3 });
+      rig.rot('armL', 0.05, 0, 0.02);
+      rig.rot('armR', 0.05, 0, -0.02);
+      rig.rot('foreL', -0.25, 0.4, 0);
+      rig.rot('foreR', -0.25, -0.4, 0);
+      if (bow) {
+        bow += dt * 0.7;
+        const b = Math.sin(Math.min(1, bow) * Math.PI);
+        rig.blend({ spine: [0.3, 0, 0], chest: [0.35, 0, 0], neck: [0.15, 0, 0], head: [0.1, 0, 0] }, b);
+        if (bow >= 1) bow = 0;
+      } else lookAt(model, eye.copy(ctx.camera.position), { max: 0.8 });
+    };
 
     if (!world.attract) {
       world.add(new Watcher(world, { look: { body: 0x16171a, suit: true, height: 2.2 }, speed: 1.4 }));
       if (world.depth >= 1) world.add(new Follower(world));
+      if (world.depth >= 1) world.add(new Peeker(world, { look: { body: 0x16171a, suit: true } }));
+      if (rng.chance(0.3)) world.add(new StrayCat(world));
     }
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'station',
+    looks: ['attendant'],
+    surfaces: () => ({
+      wall: { mat: photo('long_white_tiles', { uvScale: 1.4, roughness: 0.35, color: new THREE.Color(1.08, 1.08, 1.06) }), uv: 2.4 },
+      floor: { mat: pbr(terrazzo(), { normalScale: 0.4 }), uv: 3 },
+      ceil: { mat: pbr(paint('s-station-ceil', [196, 198, 196], { rough: 0.6 })), uv: 2 },
+    }),
+    props: {
+      wall: [{ p: P.vendingMachine, w: 2 }, { p: P.bench, w: 2 }, { p: P.ticketMachine, w: 1 }],
+      high: [{ p: P.stationMap, w: 1 }, { p: P.cctv, w: 1 }],
+      clutter: [{ p: P.umbrella, w: 1 }, { p: P.lostShoe, w: 1 }],
+    },
+    stray: (world, pos) => strayNPC(world, pos, {
+      name: 'the station attendant',
+      model: LOOKS.attendant(),
+      voice: 0.95,
+      lines: [
+        ['Excuse me. Is this the platform for...', 'No. No, it isn’t.'],
+        ['The timetable says the train comes through here.', 'The timetable is often wrong. I wrote it.'],
+      ],
+    }),
   },
 
   makeDoor(world, dest) {

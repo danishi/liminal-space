@@ -6,8 +6,10 @@ import { buildShell, ceilingFixtures, doorModel, glow, decorate, stairRun } from
 import { PropKit } from '../props/kit.js';
 import { photo } from '../core/assets.js';
 import * as P from '../props/library.js';
-import { Watcher, Follower } from '../entities/creatures.js';
-import { NPC, mat } from '../entities/npc.js';
+import { Watcher, Follower, Mannequin, Peeker, StrayCat, RobotVacuum } from '../entities/creatures.js';
+import { LOOKS } from '../entities/looks.js';
+import { applyPose, lookAt } from '../entities/figures.js';
+import { NPC, strayNPC } from '../entities/npc.js';
 
 const H = 2.7;
 
@@ -37,44 +39,17 @@ const M = {
 
 function drifterModel() {
   const g = new THREE.Group();
-  const suit = mat(0xc4611f);
-  const dark = mat(0x2a2a28);
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.4, 4, 8), suit);
-  torso.position.set(0, 0.62, -0.05);
-  torso.rotation.x = -0.15;
-  g.add(torso);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), suit);
-  head.position.set(0, 1.05, -0.02);
-  g.add(head);
-  const mask = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.12, 12), dark);
-  mask.rotation.x = Math.PI / 2;
-  mask.position.set(0, 1.0, 0.14);
-  g.add(mask);
-  for (const x of [-0.07, 0.07]) {
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.045, 12), new THREE.MeshStandardMaterial({ color: 0x9fb4b0, metalness: 0.6, roughness: 0.2 }));
-    lens.position.set(x, 1.08, 0.155);
-    g.add(lens);
-  }
-  for (const x of [-0.13, 0.13]) {
-    const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.35, 4, 8), suit);
-    thigh.rotation.x = Math.PI / 2 - 0.5;
-    thigh.position.set(x, 0.38, 0.2);
-    g.add(thigh);
-    const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.35, 4, 8), suit);
-    shin.rotation.x = 0.35;
-    shin.position.set(x, 0.24, 0.48);
-    g.add(shin);
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.4, 4, 8), suit);
-    arm.position.set(x * 2.1, 0.6, 0.08);
-    arm.rotation.x = -0.6;
-    g.add(arm);
-  }
+  const fig = LOOKS.drifter();
+  applyPose(fig.userData.rig, 'slump');
+  g.add(fig);
   const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.16, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.7, 0.9) }));
   lantern.position.set(0.42, 0.08, 0.35);
+  lantern.userData.noBake = true;
   g.add(lantern);
   const l = glow(0xffc36b, 1.2, 0.5);
   l.position.copy(lantern.position);
   g.add(l);
+  g.userData = fig.userData;
   return g;
 }
 
@@ -131,6 +106,7 @@ export default {
   assets: {
     textures: ['decrepit_wallpaper', 'dirty_carpet'],
     models: ['cardboard_box_01', 'WetFloorSign_01', 'metal_office_desk', 'plastic_monobloc_chair_01', 'metal_trash_can', 'drawer_cabinet', 'korean_fire_extinguisher_01', 'Television_01', 'ladder_sectioned_01', 'fire_alarm'],
+    looks: ['drifter', 'watcher', 'cat', 'vacuum', 'mannequin'],
   },
 
   build(world) {
@@ -244,7 +220,7 @@ export default {
       const c = g.center(i, j);
       const model = drifterModel();
       model.position.set(c.x, 0, j * cs + 0.35);
-      world.add(new NPC(world, {
+      const drifter = world.add(new NPC(world, {
         name: 'the Drifter',
         pos: model.position.clone(),
         model,
@@ -252,6 +228,7 @@ export default {
         face: false,
         conversations: [
           [
+            '(snrk—) Huh? What? I wasn’t asleep.',
             '...Huh. Someone who still has their wits about them.',
             'This is Level 0. Walk as far as you like, it is the same yellow room the whole way.',
             'There are doors that hum. Walk through one and you end up somewhere else. So do the holes in the floor, only faster.',
@@ -261,8 +238,30 @@ export default {
             'And the tall one stands at the ends of hallways. It never comes closer. I think it just wants to be seen.',
           ],
           ['I will rest here a while. ...Lost count of the days, honestly.'],
+          ['(He is asleep again. The mask whistles when he breathes.)'],
         ],
       }));
+      // dozes against the wall, snoring through the mask; wakes up to talk
+      let snore = 4;
+      const eye = new THREE.Vector3();
+      drifter.idle = (dt, ctx) => {
+        const rig = model.userData.rig;
+        applyPose(rig, 'slump');
+        const breathe = Math.sin(drifter.t * 1.1);
+        rig.rot('chest', 0.25 + breathe * 0.03, 0, 0);
+        if (drifter.talking) {
+          lookAt(model, eye.copy(ctx.camera.position), { max: 1.1 });
+        } else rig.rot('head', 0.3 + breathe * 0.05, 0.2, 0.15);
+        snore -= dt;
+        if (snore <= 0 && !drifter.talking && !ctx.attract) {
+          snore = 4.2;
+          const d = ctx.player.pos.distanceTo(model.position);
+          if (d < 12 && ctx.game.audio.ready) {
+            if (!drifter.panner) drifter.panner = ctx.game.audio.panner(model.position.x, 0.8, model.position.z, { ref: 1.5, rolloff: 1.3 });
+            ctx.game.audio.snore(drifter.panner);
+          }
+        }
+      };
     }
 
     // a phone ringing somewhere far away
@@ -282,13 +281,29 @@ export default {
           prompt: 'Pick up the phone',
           conversations: [
             ['(static)', '...hello? Is someone there? I can hear you breathing.', 'Don’t go down the stairs. Every time I go down, the rooms get— (the line goes dead)'],
+            ['(a recording) Thank you for calling the Backrooms.', 'Your call is important to us. You are caller number four hundred thousand and six.', '(hold music, slightly too slow)'],
+            ['Hello? Is this the Poolrooms?', '...Oh. Sorry. Wrong number. (click)'],
+            ['Hi. It’s you. From later.', 'Don’t take the second door. Or do. I honestly can’t remember which one it was.'],
+            ['(heavy breathing, then, politely) Sorry. Stairs.'],
             ['(only a dial tone)'],
           ],
         });
         phone.aimHeight = 0.1;
+        // it rings until you answer, then again a while later with someone else on the line
         let ring = 3;
+        let quiet = 0;
+        let answered = 0;
         phone.idle = (dt, ctx) => {
-          if (phone.talkIndex > 0 || ctx.attract) return;
+          if (ctx.attract) return;
+          if (phone.talkIndex !== answered) {
+            answered = phone.talkIndex;
+            quiet = rng.float(35, 70);
+          }
+          if (quiet > 0) {
+            quiet -= dt;
+            return;
+          }
+          if (phone.talkIndex >= phone.conversations.length - 1) return;
           ring -= dt;
           const dd = ctx.player.pos.distanceTo(model.position);
           if (ring <= 0 && dd < 22) {
@@ -301,7 +316,49 @@ export default {
       }
       world.add(new Watcher(world, { look: {} }));
       if (world.depth >= 1) world.add(new Follower(world));
+      if (world.depth >= 1) world.add(new Peeker(world, { look: { body: 0x2a2418 } }));
+      if (world.depth >= 2) world.add(new Watcher(world, { look: {}, ceiling: true }));
+      if (rng.chance(0.5)) world.add(new StrayCat(world));
+      // office mannequins someone left in the far rooms
+      const n = Math.min(4, world.depth + (rng.chance(0.5) ? 1 : 0));
+      const cells = world.pickFarCells(n, { minFrac: 0.45, spacing: 6, filter: (i, j) => g.get(i, j) === FLOOR && !g.ramp[j * W + i] && g.countSolidNeighbors(i, j) <= 1 });
+      cells.forEach(([i, j], k) => {
+        const c = g.center(i, j);
+        world.add(new Mannequin(world, { pos: new THREE.Vector3(c.x, g.heightOf(i, j), c.z), yaw: rng.float(0, 6.28), variant: k, mode: 'mixed' }));
+      });
     }
+    // a robot vacuum on its rounds near where you woke up
+    const vc = world.pickFarCells(1, { minFrac: 0.05, spacing: 1, filter: (i, j) => g.get(i, j) === FLOOR && g.heightOf(i, j) === 0 && !g.ramp[j * W + i] && d[j * W + i] < 8 && g.countSolidNeighbors(i, j) === 0 })[0];
+    if (vc) {
+      const c = g.center(...vc);
+      world.add(new RobotVacuum(world, new THREE.Vector3(c.x, 0, c.z)));
+    }
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'hum',
+    looks: ['drifter'],
+    surfaces: () => ({
+      wall: { mat: photo('decrepit_wallpaper', { uvScale: 2.7, color: new THREE.Color(1.38, 1.2, 0.52) }), uv: 2.7 },
+      floor: { mat: photo('dirty_carpet', { uvScale: 1.2, color: new THREE.Color(2.7, 2.25, 1.1), normalScale: 0.7 }), uv: 2.4 },
+      ceil: { mat: pbr(ceilingTile(), { normalScale: 0.8 }), uv: 1.2 },
+    }),
+    props: {
+      wall: [{ p: M.box, w: 2 }, { p: P.waterCooler, w: 1 }, { p: M.cabinet, w: 1 }, { p: P.filingCabinet, w: 1 }],
+      high: [{ p: P.outlet, w: 2 }, { p: P.wallVent, w: 1 }],
+      floor: [{ p: P.officeChair, w: 2 }, { p: M.sign, w: 1 }],
+      clutter: [{ p: P.paperScatter, w: 2 }, { p: M.box, w: 1 }],
+    },
+    stray: (world, pos) => strayNPC(world, pos, {
+      name: 'the Drifter',
+      model: LOOKS.drifter(),
+      voice: 0.8,
+      lines: [
+        ['Oh no. Not again.', 'I walked through a perfectly ordinary door and the carpet came with me.'],
+        ['If you find Level 0, tell it I’m sorry. It’ll know what for.'],
+      ],
+    }),
   },
 
   makeDoor(world, dest) {
