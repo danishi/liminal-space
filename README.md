@@ -5,7 +5,10 @@ There is nothing to win. You drift from one empty place to the next.
 
 **Play:** https://danishi.github.io/liminal-space/
 
-[![Liminal Drift highlight reel](public/media/highlight.gif)](https://danishi.github.io/liminal-space/media/highlight.mp4)
+[![Liminal Drift gameplay](public/media/gameplay.gif)](https://danishi.github.io/liminal-space/media/gameplay.mp4)
+
+▶ **Gameplay** (80 s, 1280×720, in-game sound, all ten levels): [watch on GitHub Pages](https://danishi.github.io/liminal-space/media/gameplay.mp4)
+· [public/media/gameplay.mp4](public/media/gameplay.mp4)
 
 ▶ **Highlight reel** (38 s, 1280×720, with sound): [watch on GitHub Pages](https://danishi.github.io/liminal-space/media/highlight.mp4)
 · [public/media/highlight.mp4](public/media/highlight.mp4)
