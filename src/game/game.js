@@ -9,9 +9,9 @@ import { World } from './world.js';
 import { STAGES } from '../stages/index.js';
 
 const QUALITY = {
-  low: { pr: 0.75, bloom: false, lights: 4, shadows: false, ao: false, env: 128 },
-  mid: { pr: 1, bloom: true, lights: 6, shadows: false, ao: true, env: 256 },
-  high: { pr: 1.5, bloom: true, lights: 8, shadows: true, ao: true, env: 256 },
+  low: { pr: 0.75, bloom: false, lights: 4, shadows: false, ao: false, env: 128, probeFollow: false },
+  mid: { pr: 1, bloom: true, lights: 6, shadows: false, ao: true, env: 256, probeFollow: false },
+  high: { pr: 1.5, bloom: true, lights: 8, shadows: true, ao: true, env: 256, probeFollow: true },
 };
 
 /**
@@ -29,7 +29,7 @@ export class Game {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.AgXToneMapping;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     const aniso = this.renderer.capabilities.getMaxAnisotropy();
     setMaxAnisotropy(aniso);
     setSurfaceAnisotropy(aniso);
@@ -44,6 +44,11 @@ export class Game {
     this.flashlight = new THREE.SpotLight(0xfff1dc, 0, 26, THREE.MathUtils.degToRad(30), 0.55, 1.2);
     this.flashlight.position.set(0.18, -0.12, 0.1);
     this.flashlight.target.position.set(0, -0.18, -1);
+    this.flashlight.shadow.mapSize.set(1024, 1024);
+    this.flashlight.shadow.bias = -0.0004;
+    this.flashlight.shadow.normalBias = 0.03;
+    this.flashlight.shadow.camera.near = 0.2;
+    this.flashlight.shadow.camera.far = 26;
     this.camera.add(this.flashlight, this.flashlight.target);
 
     this.post = new PostFX(this.renderer, this.scene, this.camera);
@@ -160,10 +165,15 @@ export class Game {
     }
     world.lightPool?.snap(this.camera.position);
     const pos = this.camera.position.clone();
+    const fl = this.flashlight.intensity;
+    this.flashlight.intensity = 0;
     const rt = this.pmrem.fromScene(this.scene, 0.03, 0.1, 80, { size: this.quality.env, position: pos });
     this.envTex = rt.texture;
     this.scene.environment = this.envTex;
     this.scene.environmentIntensity = world.env.envIntensity;
+    this.flashlight.intensity = fl;
+    this.probePos = pos;
+    this.probeTime = this.time;
   }
 
   configureEnv(world) {
@@ -172,7 +182,9 @@ export class Game {
     this.scene.fog = env.fog;
     this.renderer.toneMapping = env.toneMapping ?? THREE.AgXToneMapping;
     this.renderer.toneMappingExposure = env.exposure;
-    this.renderer.shadowMap.enabled = !!env.shadows && this.quality.shadows;
+    // the flashlight casts shadows in dark levels (medium and high quality)
+    this.flashlight.castShadow = !!env.flashlight && this.quality.ao;
+    this.renderer.shadowMap.enabled = (!!env.shadows && this.quality.shadows) || this.flashlight.castShadow;
     this.post.configure(env.postfx, this.quality.bloom, this.quality.ao ? env.ao : 0);
     this.flashlight.intensity = 0;
     this.flashlight.distance = env.flashlightDistance || 26;
@@ -399,6 +411,11 @@ export class Game {
     this.desat = Math.min(0.5, Math.max(0, unease - 0.6) * 0.5);
     const fade = w.timeLeft < 18 ? (1 - w.timeLeft / 18) : 0;
     this.staticLevel = Math.max(0, this.fear - 0.8) * 0.4 + fade * fade * 0.55 + (Math.random() < unease * 0.004 ? 0.35 : 0);
+
+    // on high quality the reflection probe follows you around
+    if (this.quality.probeFollow && this.probePos && this.time - this.probeTime > 5 && this.camera.position.distanceTo(this.probePos) > 12) {
+      this.captureEnvironment(w);
+    }
 
     this.ui.updateHud(this);
     this.ui.drawMaps(w, p);

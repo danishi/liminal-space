@@ -59,7 +59,10 @@ inverted look, head bob, reduced screen effects, FPS counter) are saved in the b
 ## Graphics
 
 - PBR materials with procedural normal and roughness maps
-- Per-level reflection probe (PMREM) captured at the arrival point
+- Baked lighting: when a level is built, every fixture's light (blocked by walls), a bounce term and
+  ambient occlusion are computed per vertex, so the whole level is lit, not only the lights near you
+- Flashlight shadows in dark levels (Medium and High)
+- Reflection probe (PMREM) captured at the arrival point; on High it is re-captured as you move
 - Ground-truth ambient occlusion (GTAO) on Medium and High
 - Rectangular area lights for fluorescent panels, pooled so only the nearest fixtures are real lights
 - AgX / neutral tone mapping, bloom, and a camcorder pass (grain, vignette, chromatic aberration)

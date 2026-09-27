@@ -250,6 +250,7 @@ export default {
       ambience: 'dream',
       reverb: [2.4, 3],
       shadows: true,
+      bake: { hemi: 1, dynamic: 1, bounce: 0, ao: 0.8 },
     });
     world.surfaceFn = () => 'soft';
 

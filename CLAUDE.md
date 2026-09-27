@@ -48,6 +48,11 @@ in real time.
   `finish()`; mark animated or individually-changing meshes with `keep()`. `library.js` holds the prop
   builders; each has `place` (`wall`, `high`, `floor`, `clutter`, `ceil`) and an optional footprint `fp`.
 - `src/core/surfaces.js` — procedural PBR surfaces (colour + normal + roughness), cached by key.
+- `src/core/bake.js` — per-vertex baked lighting and AO (`bake` attribute, applied through a material
+  shader patch). `World.bake()` runs after `stage.build`; light pool fixtures are sources automatically,
+  extra sources go in `world.bakeSources`, and `world.env.bake` tunes it (`hemi`, `dynamic`, `bounce`,
+  `fixtureScale`, `tess`) or disables it (`false`). Geometry from the grid builders is tagged
+  `userData.quads` so it can be tessellated before baking.
 
 ## Conventions
 

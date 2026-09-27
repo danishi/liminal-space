@@ -301,6 +301,7 @@ export default {
       flashlight: true,
       flashlightOn: false,
       flashlightIntensity: 35,
+      bake: { tess: 0.9, hemi: 0.7, bounce: 0.2 },
     });
     world.surfaceFn = (x, z) => {
       const [i, j] = g.cellOf(x, z);

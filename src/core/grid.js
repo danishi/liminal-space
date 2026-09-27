@@ -325,6 +325,7 @@ class GeoBuilder {
     g.setIndex(this.idx);
     g.computeBoundingSphere();
     g.computeBoundingBox();
+    g.userData.quads = true; // lets the light baker tessellate it
     return g;
   }
 }

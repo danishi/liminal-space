@@ -140,7 +140,10 @@ export default {
 
     // sunlight through the windows onto the floor
     const patchMat = new THREE.MeshBasicMaterial({ map: sunPatch(), color: 0xffa860, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+    const warm = new THREE.Color(1, 0.68, 0.42);
     for (const m of wallMounts(g).filter((mm) => outer(mm.i - mm.nx, mm.j - mm.nz))) {
+      // each window pane lights the corridor (baked; dims with the sunset)
+      world.bakeSources.push({ pos: new THREE.Vector3(m.x + m.nx * 0.3, m.y + 1.7, m.z + m.nz * 0.3), color: warm, intensity: 5, dir: new THREE.Vector3(m.nx, -0.25, m.nz).normalize() });
       const p = new THREE.Mesh(new THREE.PlaneGeometry(cs * 0.95, 2.6), patchMat);
       p.rotation.x = -Math.PI / 2;
       const grp = new THREE.Group();
@@ -228,6 +231,7 @@ export default {
       envIntensity: 0.55,
       ambience: 'school',
       reverb: [2.2, 3],
+      bake: { hemi: 0.6, bounce: 0.4 },
     });
     world.surfaceFn = () => 'wood';
 
@@ -254,6 +258,7 @@ export default {
       hemi.intensity = 0.9 - e * 0.62;
       sun.intensity = 1.2 * (1 - e);
       winMat.emissive.setRGB(1, 1, 1).lerp(nightWin, e);
+      if (world.bakeUniforms) world.bakeUniforms.scale.value = 1 - e * 0.92;
       patchMat.opacity = 0.55 * (1 - e);
       dustMat.opacity = 0.8 * (1 - e * 0.8);
       const cam = ctx.camera.position;

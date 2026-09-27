@@ -221,6 +221,7 @@ export default {
       envIntensity: 0.8,
       ambience: 'pool',
       reverb: [3.6, 2.2],
+      bake: { fixtureScale: 0.22, bounce: 0.45, hemi: 0.45, dynamic: 0.45 },
     });
     world.speedFn = (x, z) => (world.isWater(x, z) ? 0.62 : 1);
     world.surfaceFn = (x, z) => (world.isWater(x, z) ? 'water' : 'tile');
