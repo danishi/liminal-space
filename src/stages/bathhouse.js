@@ -36,6 +36,7 @@ const H = ROW_B + MD;
 const BANDAI_PH = 0.5; // the bandai platform
 const BANDAI_CH = 0.62; // its counter boards
 const BANDAI_TOP = Y_WOOD_ + BANDAI_PH + BANDAI_CH + 0.05;
+const BAND = 0.8; // top of the blue tile band in the bath hall
 const Y_GENKAN = 0;
 const Y_WOOD = Y_WOOD_;
 const Y_BATH = 0;
@@ -255,7 +256,7 @@ function muralTexture(variant) {
     const r = rng32(variant.length * 131 + 7);
     const dusk = variant === 'figure';
     const horizon = h * 0.66;
-    const seaY = variant === 'flood' ? h * 0.3 : horizon;
+    const seaY = variant === 'flood' ? h * 0.4 : horizon;
     const sky = c.createLinearGradient(0, 0, 0, horizon);
     if (dusk) {
       sky.addColorStop(0, '#221a3e');
@@ -1504,7 +1505,7 @@ export default {
               continue;
             }
             set(L(li), lj, WATER, lj === 21 ? Y_BENCH : Y_DEEP, Z_BATH, s);
-            bathKind[K(...cellL(m, L(li), lj))] = li < 5 ? 1 : 2;
+            bathKind[K(...cellL(m, L(li), lj))] = li < 5 ? 1 : s ? 4 : 2;
           }
         }
       }
@@ -1616,6 +1617,7 @@ export default {
       m.name = m === spawnMod ? NAMES[0] : NAMES[Math.min(NAMES.length - 1, Math.floor(m.u * 5 + rng.float(0, 1.5)))];
       m.variant = m.u < 0.3 ? 'classic' : m.u < 0.5 ? rng.pick(['classic', 'two']) : m.u < 0.7 ? rng.pick(['two', 'flood']) : m.u < 0.9 ? rng.pick(['flood', 'upside']) : rng.pick(['upside', 'figure']);
       if (m === spawnMod) m.variant = 'classic';
+      if (window.__bathVariants) m.variant = window.__bathVariants[m.idx]; // DEBUG
     }
     // deep ends: some baths go down further than the building does
     const deep = new Set();
@@ -1720,8 +1722,8 @@ export default {
       // a dark trim rail where the wood panelling stops
       wall({ solid: (c) => c === WALL, open: inZone(z), y0: (i, j) => floorOf(i, j) + band - 0.02, y1: (i, j) => floorOf(i, j) + band + 0.05, inset: 0.012, uScale: 1, vScale: 1 }, riserWood);
     }
-    wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => Math.min(ceilOf(i, j), Math.max(floorOf(i, j), 0) + 0.75), uScale: 1.6, vScale: 1.6 }, tileBand);
-    wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: (i, j) => Math.max(floorOf(i, j), 0) + 0.75, y1: (i, j) => Math.min(ceilOf(i, j), 2.3), uScale: 1.6, vScale: 1.6 }, tileWall);
+    wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => Math.min(ceilOf(i, j), BAND), uScale: 1.6, vScale: 1.6 }, tileBand);
+    wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: (i, j) => BAND, y1: (i, j) => Math.min(ceilOf(i, j), 2.3), uScale: 1.6, vScale: 1.6 }, tileWall);
     wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: () => 2.3, y1: (i, j) => ceilOf(i, j), uScale: 2, vScale: 2 }, upperBath);
     // low partitions and islands
     const lowNb = new Float32Array(N);
@@ -1733,8 +1735,8 @@ export default {
       }
     }
     const lowSolid = (c, i, j) => c === VOID && lowTop[K(i, j)] > 0;
-    wall({ solid: lowSolid, open: inZone(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => Math.max(floorOf(i, j), 0) + 0.75, uScale: 1.6, vScale: 1.6 }, tileBand);
-    wall({ solid: lowSolid, open: inZone(Z_BATH), y0: (i, j) => Math.max(floorOf(i, j), 0) + 0.75, y1: (i, j) => lowNb[K(i, j)], uScale: 1.6, vScale: 1.6 }, tileWall);
+    wall({ solid: lowSolid, open: inZone(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => BAND, uScale: 1.6, vScale: 1.6 }, tileBand);
+    wall({ solid: lowSolid, open: inZone(Z_BATH), y0: (i, j) => BAND, y1: (i, j) => lowNb[K(i, j)], uScale: 1.6, vScale: 1.6 }, tileWall);
     wall({ solid: lowSolid, open: inZone(Z_DRESS), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => floorOf(i, j) + 1.1, uScale: 1.4, vScale: 1.4 }, wainscot);
     wall({ solid: lowSolid, open: inZone(Z_DRESS), y0: (i, j) => floorOf(i, j) + 1.1, y1: (i, j) => lowNb[K(i, j)], uScale: 2, vScale: 2 }, plaster);
     const capGeo = buildCellQuads(g, lowSolid, (i, j) => lowTop[K(i, j)] + 0.001, true, 1.6);
@@ -1869,10 +1871,11 @@ export default {
     const nMap = waterNormalMap();
     const waterMats = {
       1: new THREE.MeshPhysicalMaterial({ color: 0x9fe0d6, transparent: true, opacity: 0.5 + u * 0.2, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.06, normalMap: nMap, normalScale: new THREE.Vector2(0.25, 0.25), depthWrite: false }),
-      2: new THREE.MeshPhysicalMaterial({ color: 0xd8c070, transparent: true, opacity: 0.82, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.1, normalMap: nMap, normalScale: new THREE.Vector2(0.2, 0.2), depthWrite: false }),
+      4: new THREE.MeshPhysicalMaterial({ color: 0xa8e8f0, transparent: true, opacity: 0.45, roughness: 0.03, clearcoat: 1, clearcoatRoughness: 0.05, normalMap: nMap, normalScale: new THREE.Vector2(0.35, 0.35), depthWrite: false }),
+      2: new THREE.MeshPhysicalMaterial({ color: 0xe8e090, transparent: true, opacity: 0.62, roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.1, normalMap: nMap, normalScale: new THREE.Vector2(0.2, 0.2), depthWrite: false }),
       3: new THREE.MeshPhysicalMaterial({ color: 0x6a9a98, transparent: true, opacity: 0.72, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.05, normalMap: nMap, normalScale: new THREE.Vector2(0.3, 0.3), depthWrite: false }),
     };
-    for (const kind of [1, 2, 3]) {
+    for (const kind of [1, 2, 3, 4]) {
       const geo = buildCellQuads(g, (c, i, j) => isWet(i, j) && bathKind[K(i, j)] === kind, surfOf, true, 3);
       if (!geo.attributes.position.count) continue;
       const wm = mesh(world, geo, waterMats[kind]);
@@ -1912,6 +1915,12 @@ export default {
     };
 
     const massageChairs = [];
+    const yuzus = [];
+    const yuzuMat = new THREE.MeshStandardMaterial({ color: 0xf0b020, roughness: 0.5 });
+    const yuzuGeo = new THREE.SphereGeometry(0.045, 12, 9);
+    yuzuGeo.scale(1, 0.85, 1);
+    const yuzuParts = [{ geo: yuzuGeo, mat: yuzuMat, m: new THREE.Matrix4() }];
+    world.onDispose.push(() => yuzuGeo.dispose());
     const scales = [];
     const fridges = [];
 
@@ -2210,6 +2219,20 @@ export default {
           const warn = boardTexture('ewarn', 384, 256, '#fff4c0', [['注意', 0.3, '#c01818', 900], ['心臓の弱い方は', 0.16, '#1a1a1a'], ['ご遠慮ください', 0.16, '#1a1a1a'], ['Not for weak hearts', 0.14, '#6a1a1a', 600]], { border: '#c01818' });
           const p = at(m, s, 7.98, 22.2, -PI / 2);
           kit.add(hangingPlate(kit, warn, 0.42, 0.28, 0, 0, 0), p.x, p.z, p.yaw, { y: 1.35 });
+          // electrode plates on the bath wall
+          for (const lz of [22.6, 24.4]) {
+            const plate = new THREE.Group();
+            kit.box(plate, 0.5, 0.35, 0.02, kit.std(0xb8bcbc, 0.25, 0.9), 0, 0, 0);
+            for (let n = 0; n < 5; n++) kit.box(plate, 0.4, 0.015, 0.01, kit.std(0x333333, 0.5), 0, -0.12 + n * 0.06, 0.012);
+            const q = at(m, s, 7.97, lz, -PI / 2);
+            kit.add(plate, q.x, q.z, q.yaw, { y: 0.05 });
+          }
+        } else {
+          // yuzu floating in the herbal bath
+          for (let n = 0; n < 9; n++) {
+            const q = at(m, s, 6.2 + r2() * 1.6, 21.3 + r2() * 4.4);
+            yuzus.push({ ref: batch.add('yuzu', yuzuParts, matAt(q.x, Y_SURF, q.z)), x: q.x, z: q.z, ph: r2() * 6, vx: (r2() - 0.5) * 0.04, vz: (r2() - 0.5) * 0.04, m });
+          }
         }
         clock(m, s, 6.2, 14.02, 0, 2.6);
         // lights: along the low ceiling on the outer side, and high over the partition
@@ -2417,7 +2440,7 @@ export default {
 
     // ---- roof terrace: fence, lanterns, rocks around the open-air bath
     {
-      const lanterns = [[T0 + 1.5, 2.0], [T1 - 0.5, 2.0], [T0 + 1.5, 8.2], [T1 - 0.5, 8.2], [rcx - 9, 5], [rcx + 9, 5]];
+      const lanterns = [[T0 + 1.5, 2.0], [T1 - 0.5, 2.0], [T0 + 1.5, 8.2], [T1 - 0.5, 8.2], [rcx - 9, 5], [rcx + 9, 5], [rcx - 4, 1.5], [rcx + 4, 1.5], [rcx - 5, 8.4], [rcx + 5.5, 8.4]];
       for (const [x, z] of lanterns) {
         kit.add(P.stoneLantern.build(kit, rng), x, z, 0, { y: Y_TERR, collide: [0.5, 0.5] });
         bakeSources.push({ pos: new THREE.Vector3(x, Y_TERR + 1.3, z), color: new THREE.Color(1, 0.65, 0.3), intensity: 3.2, range: 7 });
@@ -2484,7 +2507,7 @@ export default {
       sPos[n * 3] = i + Math.random();
       sPos[n * 3 + 1] = surfOf(i, j) + 0.05;
       sPos[n * 3 + 2] = j + Math.random();
-      sLife[n] = { t: t0 * 8, max: 6 + Math.random() * 5, vx: (Math.random() - 0.5) * 0.12, vz: (Math.random() - 0.5) * 0.12, vy: 0.18 + Math.random() * 0.2 };
+      sLife[n] = { dim: bathKind[K(i, j)] === 3 ? 0.35 : 1, t: t0 * 8, max: 6 + Math.random() * 5, vx: (Math.random() - 0.5) * 0.12, vz: (Math.random() - 0.5) * 0.12, vy: 0.18 + Math.random() * 0.2 };
       sSize[n] = 2.0 + Math.random() * 2.0;
     };
     for (let n = 0; n < SN; n++) respawn(n);
@@ -2503,7 +2526,7 @@ export default {
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mv;
           gl_PointSize = min(aSize * uScale / max(0.5, -mv.z), 220.0);
-          vA = aAlpha * smoothstep(0.6, 2.5, -mv.z);
+          vA = aAlpha * smoothstep(1.0, 4.0, -mv.z);
         }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D tex;
@@ -2526,8 +2549,8 @@ export default {
     const keeperModel = LOOKS.keeper();
     applyPose(keeperModel.userData.rig, 'sit');
     const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.32), new THREE.MeshStandardMaterial({ map: newspaperTexture(), roughness: 0.9, side: THREE.DoubleSide }));
-    paper.position.set(0, -0.12, 0.3);
-    paper.rotation.x = -0.25;
+    paper.position.set(0, -0.06, 0.34);
+    paper.rotation.x = -0.35;
     keeperModel.userData.rig.bones.chest.add(paper);
     let keeperMod = spawnMod;
     const seatAt = (m) => m.bandai.seat.clone();
@@ -2572,10 +2595,10 @@ export default {
       const rig = keeperModel.userData.rig;
       applyPose(rig, 'sit');
       const t = keeper.t;
-      rig.rot('armL', -0.55, 0.2, -0.05);
-      rig.rot('foreL', -1.35, 0.3, 0);
-      rig.rot('armR', -0.55, -0.2, 0.05);
-      rig.rot('foreR', -1.35, -0.3, 0);
+      rig.rot('armL', -0.85, 0.15, 0.08);
+      rig.rot('foreL', -1.1, 0.2, 0);
+      rig.rot('armR', -0.85, -0.15, -0.08);
+      rig.rot('foreR', -1.1, -0.2, 0);
       rig.rot('spine', 0.12 + Math.sin(t * 1.4) * 0.01, 0, 0);
       const p = ctx.player.pos;
       const near = Math.hypot(p.x - keeperModel.position.x, p.z - keeperModel.position.z) < 5.5;
@@ -2637,7 +2660,7 @@ export default {
         lid.rotation.x = 0.55;
         e.add(lid);
       }
-      const base = sp2.y - 0.3;
+      const base = sp2.y - 0.36;
       fig.position.set(sp2.x, base, sp2.z);
       fig.rotation.y = sp2.yaw;
       const capy = new NPC(world, { name: 'the capybara', pos: fig.position.clone(), model: fig, voice: 0.5, radius: 0.45, face: false, prompt: 'Join the capybara', conversations: [capyLines[n % capyLines.length], ...capyLines.filter((_, k) => k !== n % capyLines.length)], onTalk: (game) => game.audio.splash(null, 0.6) });
@@ -2657,6 +2680,23 @@ export default {
       capys.push(capy);
     }
 
+    // deeper in, a capybara cools off on a changing-room bench with a towel on its head
+    if (world.depth >= 2) {
+      const m = rng.pick(mods.filter((x) => x !== spawnMod));
+      const p = at(m, 0, 4.2, 9.35, PI / 2 + PI);
+      const fig = LOOKS.capybara();
+      beastPose(fig, 'sit');
+      fig.scale.setScalar(1.1);
+      if (fig.userData.yuzu) fig.userData.yuzu.visible = false;
+      const towel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.035, 0.14), new THREE.MeshStandardMaterial({ color: 0xf4f2ec, roughness: 1 }));
+      towel.position.set(0, 0.2 * 0.72 + 0.02, 0.01);
+      fig.userData.rig.bones.head.add(towel);
+      fig.position.set(p.x, Y_WOOD + modelSize('painted_wooden_bench').y * 0.8, p.z);
+      fig.rotation.y = p.yaw;
+      const bc = new NPC(world, { name: 'the capybara', pos: fig.position.clone(), model: fig, voice: 0.5, radius: 0, face: false, prompt: 'Sit with the capybara', conversations: [['(It is cooling down after its bath. It has earned this.)'], ['(It has a towel folded on its head. You feel underdressed.)'], ['(It is waiting for the milk fridge to be restocked. It has been waiting a long time. It does not mind.)']] });
+      bc.aimHeight = 0.4;
+      world.add(bc);
+    }
     // a cat asleep on one of the bandai counters
     if (rng.chance(0.6)) {
       const m = rng.pick(mods.filter((x) => x !== spawnMod));
@@ -2729,9 +2769,9 @@ export default {
       }
     }
     const prints = [];
-    const footMat = new THREE.MeshStandardMaterial({ color: 0x4a5a60, roughness: 0.04, metalness: 0.2, transparent: true, opacity: 0, map: footprintTexture(), depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const footMat = new THREE.MeshStandardMaterial({ color: 0x6a7c84, roughness: 0.02, metalness: 0.3, transparent: true, opacity: 0, map: footprintTexture(), depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
     for (let n = 0; n < 16; n++) {
-      const fm = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.27), footMat.clone());
+      const fm = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.3), footMat.clone());
       fm.rotation.x = -PI / 2;
       fm.visible = false;
       fm.userData.noBake = true;
@@ -2772,7 +2812,7 @@ export default {
         sPos[n * 3 + 1] += L.vy * dt;
         sPos[n * 3 + 2] += L.vz * dt;
         const f = L.t / L.max;
-        sAlpha[n] = Math.sin(f * PI) * 0.055;
+        sAlpha[n] = Math.sin(f * PI) * 0.055 * L.dim;
         sSize[n] += dt * 0.12;
       }
       sGeo.attributes.position.needsUpdate = true;
@@ -2791,6 +2831,16 @@ export default {
         m4.elements[13] += Math.sin(b.hop * PI) * 0.08;
         batch.move(b.ref, m4);
       }
+      // yuzu drift and bob
+      for (const y of yuzus) {
+        if (y.m.idx !== modOfPos(pz.x, pz.z)) continue;
+        batch.move(y.ref, matAt(y.x + Math.sin(t * 0.13 + y.ph) * 0.25, Y_SURF - 0.01 + Math.sin(t * 1.3 + y.ph) * 0.008, y.z + Math.cos(t * 0.11 + y.ph) * 0.25, t * 0.1 + y.ph));
+      }
+      // the electric bath tingles
+      const [ei, ej] = g.cellOf(pz.x, pz.z);
+      const inElectric = g.inBounds(ei, ej) && bathKind[K(ei, ej)] === 4 && g.get(ei, ej) === WATER;
+      if (inElectric && !walk.buzz) game.toast('Bzzzt.', 'The electric bath works. So do your elbows, now, independently.');
+      walk.buzz = inElectric;
       // the keeper moves to the bandai of whichever bathhouse you are in, when you aren't looking
       const pm = modOfPos(pz.x, pz.z);
       if (pm >= 0 && mods[pm] !== keeperMod && modOfPos(keeperModel.position.x, keeperModel.position.z) !== pm) {
@@ -2854,9 +2904,9 @@ export default {
         }
       }
       if (hum.panner) {
-        const src = nearC && nearC.shake > 0 && dC < dF + 4 ? nearC : nearF;
-        if (src) audio.setPannerPos(hum.panner, src.pos.x, src.pos.y, src.pos.z);
-        const shaking = nearC && nearC.shake > 0 ? Math.min(1, nearC.shake) : 0;
+        const src = walk.buzz ? { pos: pz } : nearC && nearC.shake > 0 && dC < dF + 4 ? nearC : nearF;
+        if (src) audio.setPannerPos(hum.panner, src.pos.x, src.pos.y + 0.5, src.pos.z);
+        const shaking = walk.buzz ? 0.8 : nearC && nearC.shake > 0 ? Math.min(1, nearC.shake) : 0;
         hum.chair.gain.value += (shaking * 0.09 - hum.chair.gain.value) * Math.min(1, dt * 5);
         hum.chair.freq.value = 40 + Math.sin(t * 3) * 6;
       }
@@ -2910,7 +2960,7 @@ export default {
         walk.timer -= dt;
         if (walk.timer <= 0 && un > 0.6 && onTiles) {
           const a = rng.float(0, PI * 2);
-          const d = rng.float(6, 9);
+          const d = rng.float(3.5, 6.5);
           const fx = pz.x + Math.cos(a) * d;
           const fz = pz.z + Math.sin(a) * d;
           const [fi, fj] = g.cellOf(fx, fz);
@@ -2955,7 +3005,7 @@ export default {
       for (const pr of prints) {
         if (!pr.mesh.visible) continue;
         pr.age += dt;
-        pr.mesh.material.opacity = Math.max(0, Math.min(1, pr.age * 3) * 0.6 * (1 - Math.max(0, pr.age - 5) / 5));
+        pr.mesh.material.opacity = Math.max(0, Math.min(1, pr.age * 3) * 0.85 * (1 - Math.max(0, pr.age - 5) / 5));
         if (pr.age > 10) pr.mesh.visible = false;
       }
       // sinking into a deep bath
@@ -2981,7 +3031,7 @@ export default {
     Object.assign(world.env, {
       background: 0x0b0f18,
       backgroundTex: hdri('qwantani_night_puresky'),
-      backgroundIntensity: 0.28,
+      backgroundIntensity: 0.14,
       fog: new THREE.FogExp2(new THREE.Color(0x8c9aa4).lerp(new THREE.Color(0x4a5258), u), 0.028 + world.depth * 0.003),
       exposure: 1.05,
       postfx: { bloom: 0.45, bloomThreshold: 0.78, bloomRadius: 0.6, grain: 0.045, vignette: 0.3, chroma: 0.0012, scan: 0.02, tint: [1.0, 1.01, 1.03] },

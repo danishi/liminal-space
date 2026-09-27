@@ -660,9 +660,15 @@ class CarPark {
     this.chirpCool -= dt;
     for (const c of this.cars) {
       if (!c.rig || c.fx) continue;
-      const d = Math.hypot(c.x - p.x, c.z - p.z);
       c.cool = (c.cool || 0) - dt;
-      if (d > 3.4 || c.cool > 0) continue;
+      if (c.cool > 0 || Math.abs(c.x - p.x) + Math.abs(c.z - p.z) > 9) continue;
+      // distance to the car's body, not its centre: walking down the lane counts as passing it
+      const cy = Math.cos(c.yaw);
+      const sy = Math.sin(c.yaw);
+      const lx = (p.x - c.x) * cy - (p.z - c.z) * sy;
+      const lz = (p.x - c.x) * sy + (p.z - c.z) * cy;
+      const d = Math.hypot(Math.max(0, Math.abs(lx) - c.size[0] / 2), Math.max(0, Math.abs(lz) - c.size[1] / 2));
+      if (d > (c.honker ? 4 : 3.4)) continue;
       if (c.honker && ctx.player.speed > 0.5) {
         // shave and a haircut ... (two bits)
         c.cool = 70;
@@ -1393,9 +1399,12 @@ export default {
       }
       parked.push({ b, x, z, yaw });
     }
+    let pastel = false;
     for (const { b, x, z, yaw } of parked) {
       const kind = rng.pick(['sedan', 'sedan', 'sedan', 'kei', 'kei', 'van']);
-      const paintHex = pickPaint(rng, kind);
+      // at least one little pastel kei car near the entrance
+      const paintHex = kind === 'kei' && !pastel ? rng.pick(PASTELS) : pickPaint(rng, kind);
+      if (PASTELS.includes(paintHex)) pastel = true;
       const sculpt = carModel(kind, paintHex);
       sculpt.children[0].userData.noBake = true;
       const root = new THREE.Group();
@@ -1795,7 +1804,7 @@ export default {
     for (let k = 0; k < 3; k++) kit.add(P.trafficCone.build(kit, rng), (41.2 + k * 0.6) * CS, 20.1 * CS, 0, { y: 1.35 });
 
     // convex safety mirrors where the lanes meet the end walls
-    const mirrorMat = kit.mat('mirror', () => new THREE.MeshStandardMaterial({ color: 0xd8dde0, metalness: 1, roughness: 0.04 }));
+    const mirrorMat = kit.mat('mirror', () => new THREE.MeshStandardMaterial({ color: 0x6c7276, metalness: 1, roughness: 0.06 }));
     const rimMat = kit.std(0xe06a1c, 0.5, 0.1);
     for (const L of LANES) {
       for (const [x, face] of [[1 * CS, 1], [43 * CS, -1]]) {
@@ -1864,7 +1873,7 @@ export default {
     world.lightPool = pool;
     const lens = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.05, 0.22), new THREE.MeshBasicMaterial({ color: 0xffffff }), lampAt.length);
     const housing = new THREE.InstancedMesh(new THREE.BoxGeometry(0.62, 0.14, 0.3), new THREE.MeshStandardMaterial({ color: 0x3a3a38, roughness: 0.5, metalness: 0.5 }), lampAt.length);
-    pool.baseColor.setRGB(2.2, 0.95, 0.22);
+    pool.baseColor.setRGB(1.7, 0.72, 0.16);
     const mtx = new THREE.Matrix4();
     const col = new THREE.Color();
     lampAt.forEach(([x, z], n) => {
@@ -1874,7 +1883,7 @@ export default {
       const rot = crossOf(i) !== undefined && laneOf(j) === undefined ? PI / 2 : 0;
       mtx.makeRotationY(rot).setPosition(x, y, z);
       lens.setMatrixAt(n, mtx);
-      lens.setColorAt(n, col.setRGB(2.2, 0.95, 0.22));
+      lens.setColorAt(n, col.setRGB(1.7, 0.72, 0.16));
       mtx.makeRotationY(rot).setPosition(x, y + 0.09, z);
       housing.setMatrixAt(n, mtx);
       for (const s of [-0.22, 0.22]) kit.cyl(decals, 0.008, 0.008, 0.44, M.steel, x + (rot ? 0 : s), y + 0.38, z + (rot ? s : 0), 0, 0, 0, 5);
