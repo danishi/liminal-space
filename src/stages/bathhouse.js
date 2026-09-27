@@ -472,9 +472,9 @@ function norenTexture(kind, name = '') {
   });
 }
 
-/** Yellow bath bucket side print: the red ケロリン logo, twice around. */
-function kerorinTexture() {
-  return canvasTex('bath-kerorin', 1024, 128, (c, w, h) => {
+/** Yellow bath bucket side print: a red ユアミン brand (a made-up bathhouse remedy), twice around. */
+function bucketTexture() {
+  return canvasTex('bath-bucket', 1024, 128, (c, w, h) => {
     c.clearRect(0, 0, w, h);
     c.textAlign = 'center';
     c.textBaseline = 'middle';
@@ -482,9 +482,9 @@ function kerorinTexture() {
       c.font = `900 84px ${JP}`;
       c.lineWidth = 6;
       c.strokeStyle = '#c3141a';
-      c.strokeText('ケロリン', x, h * 0.46);
+      c.strokeText('ユアミン', x, h * 0.46);
       c.fillStyle = '#d8161c';
-      c.fillText('ケロリン', x, h * 0.46);
+      c.fillText('ユアミン', x, h * 0.46);
     }
   });
 }
@@ -955,8 +955,8 @@ function modelParts(id, scale = 1) {
 }
 
 let bucketParts = null;
-/** The yellow Kerorin bucket: a lathe body and a printed band. */
-function kerorinParts() {
+/** The yellow ad-printed bath bucket: a lathe body and a printed band. */
+function bathBucketParts() {
   if (bucketParts) return bucketParts;
   const pts = [
     [0, 0.004], [0.098, 0.0], [0.104, 0.004], [0.106, 0.014], [0.118, 0.1], [0.123, 0.104], [0.123, 0.112],
@@ -967,7 +967,7 @@ function kerorinParts() {
   const yellow = new THREE.MeshStandardMaterial({ color: 0xf2c418, roughness: 0.32 });
   const band = new THREE.CylinderGeometry(0.1172, 0.1093, 0.055, 28, 1, true);
   band.translate(0, 0.058, 0);
-  const print = new THREE.MeshStandardMaterial({ map: kerorinTexture(), transparent: true, alphaTest: 0.4, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -1 });
+  const print = new THREE.MeshStandardMaterial({ map: bucketTexture(), transparent: true, alphaTest: 0.4, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -1 });
   const I = new THREE.Matrix4();
   bucketParts = [{ geo: body, mat: yellow, m: I }, { geo: band, mat: print, m: I }];
   for (const p of bucketParts) {
@@ -977,12 +977,12 @@ function kerorinParts() {
   return bucketParts;
 }
 
-/** A Kerorin bucket as a decorate() prop, for when the bathhouse bleeds elsewhere. */
+/** A bath bucket as a decorate() prop, for when the bathhouse bleeds elsewhere. */
 const bleedBucket = {
   place: 'clutter', fp: null,
   build() {
     const g = new THREE.Group();
-    for (const p of kerorinParts()) {
+    for (const p of bathBucketParts()) {
       const m = new THREE.Mesh(p.geo, p.mat);
       m.applyMatrix4(p.m);
       g.add(m);
@@ -1911,7 +1911,7 @@ export default {
     const basketParts = modelParts('wicker_basket_01', 0.9);
     const addBucket = (m, s, x, y, z, yaw, upside = false, key = 'b') => {
       const mat4 = upside ? matAt(x, y + 0.115, z, yaw, 1, PI) : matAt(x, y, z, yaw);
-      const ref = batch.add(`bucket:${m ? m.idx : 't'}:${key}`, kerorinParts(), mat4);
+      const ref = batch.add(`bucket:${m ? m.idx : 't'}:${key}`, bathBucketParts(), mat4);
       const b = { ref, pos: new THREE.Vector3(x, y + 0.06, z), base: mat4.clone(), m, s, hop: 0, tower: false, upside };
       buckets.push(b);
       return b;

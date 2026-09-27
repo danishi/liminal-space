@@ -73,7 +73,7 @@ a light probe.
 | LEVEL 11 | The Night Hotel | Dark, eerie | The bellboy, a grin in the dark |
 | LEVEL 94 | The Dead Mall | Warm, hollow | A security guard asleep at his desk, display mannequins that change pose, stopped escalators, a kiddie ride that plays to nobody, odd PA announcements |
 | LEVEL 6 | Parking Level P6 | Sodium-dark | The parking attendant and his barrier, cars that lock themselves as you pass, a car that honks a tune, a driverless car that creeps closer when you look away |
-| LEVEL 26 | Midnight Bathhouse 深夜の銭湯 | Steamy, Shōwa (Japan) | The keeper on the bandai, capybaras soaking with yuzu, Kerorin buckets, a Fuji mural that goes wrong the further you go |
+| LEVEL 26 | Midnight Bathhouse 深夜の銭湯 | Steamy, Shōwa (Japan) | The keeper on the bandai, capybaras soaking with yuzu, yellow ユアミン bath buckets, a Fuji mural that goes wrong the further you go |
 
 ## Controls
 
@@ -146,3 +146,12 @@ src/
   stages/    one module per level, plus shared shell/decoration helpers
   ui/        screens, HUD, maps
 ```
+
+## License
+
+This is a personal hobby project, made for my own enjoyment. It comes as is, with no warranty or
+support, and issues and pull requests may be looked at whenever I get round to them (or not at all).
+
+The code is released under the [MIT License](LICENSE). The Poly Haven textures, models and HDRIs in
+`public/assets/` are CC0 and stay CC0. The licences of bundled dependencies (three.js, MIT) are
+written to `third-party-licenses.md` in the build output.
