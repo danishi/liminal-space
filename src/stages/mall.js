@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Grid, FLOOR, WALL, VOID, HOLE, PIT_DEPTH, buildWallFaces, buildFloors, buildRisers, buildStairs, buildCellQuads } from '../core/grid.js';
-import { paint, pbr } from '../core/surfaces.js';
+import { paint, pbr, ceilingTile } from '../core/surfaces.js';
 import { glowSprite } from '../core/textures.js';
 import { mesh, ceilingFixtures, doorModel, decorate } from './common.js';
 import { PropKit, keep } from '../props/kit.js';
@@ -896,7 +896,7 @@ export default {
   sub: 'Muzak for no one',
   tint: 0xffe6c8,
   assets: {
-    textures: ['terrazzo_tiles', 'beige_wall_001', 'painted_metal_shutter', 'old_wooden_floor_02', 'concrete_floor_02', 'concrete_wall_004', 'linoleum_brown', 'ceiling_interior', 'square_tiled_wall', 'blue_floor_tiles_01'],
+    textures: ['terrazzo_tiles', 'beige_wall_001', 'painted_metal_shutter', 'old_wooden_floor_02', 'concrete_floor_02', 'concrete_wall_004', 'linoleum_brown', 'square_tiled_wall', 'blue_floor_tiles_01'],
     models: [
       'CashRegister_01', 'potted_plant_04', 'modular_street_seating', 'bar_chair_round_01', 'coffee_table_round_01', 'wooden_display_shelves_01',
       'metal_trash_can', 'WetFloorSign_01', 'potted_plant_02', 'security_camera_01', 'cardboard_box_01', 'hand_truck', 'trashbag',
@@ -906,7 +906,6 @@ export default {
   },
 
   build(world) {
-    const T0 = performance.now();
     const rng = world.rng;
     const depth = world.depth;
     const g = (world.grid = new Grid(W, HH, CS, WALL));
@@ -983,8 +982,12 @@ export default {
     const escSet = new Set(escCells);
     const holeOk = (i, j) => {
       const k = K(i, j);
-      if (g.get(i, j) !== FLOOR || g.ramp[k] || escSet.has(k) || g.countSolidNeighbors(i, j) === 2) return false;
+      if (g.get(i, j) !== FLOOR || g.ramp[k] || escSet.has(k) || zones[k] === Z.SHOP || g.countSolidNeighbors(i, j) === 2) return false;
       if (i === 30 && j >= 4) return false;
+      // not where the islands, courts, desk and escalator landings go
+      if (j >= 14 && j <= 17 && i <= 51) return false;
+      if ((i >= 21 && i <= 27 && j >= 15 && j <= 23) || (i >= 41 && j >= 19 && j <= 25) || (i <= 8 && j >= 12 && j <= 18)) return false;
+      if (ESC.some((e) => i >= e - 1 && i <= e + 2 && (j <= 11 || j === 14))) return false;
       const y = g.heightOf(i, j);
       for (let dj = -1; dj <= 1; dj++) {
         for (let di = -1; di <= 1; di++) {
@@ -999,6 +1002,7 @@ export default {
 
     // ---- materials -----------------------------------------------------------
     const offWhite = new THREE.Color(1.3, 1.26, 1.18);
+    const tiles = pbr(ceilingTile(), { normalScale: 0.8, color: new THREE.Color(1.08, 1.08, 1.08) });
     const mats = {
       [Z.PUB]: {
         wall: { mat: photo('beige_wall_001', { uvScale: 3, color: offWhite }), u: 3, v: 3 },
@@ -1009,7 +1013,7 @@ export default {
       [Z.SHOP]: {
         wall: { mat: pbr(paint('s-mall-shop', [228, 222, 210], { rough: 0.7 })), u: 2, v: 2 },
         floor: { mat: photo('old_wooden_floor_02', { uvScale: 2, color: 0xe0d0c0 }), uv: 2 },
-        ceil: { mat: photo('ceiling_interior', { uvScale: 2.4, color: 0xe8e2d6 }), uv: 2.4 },
+        ceil: { mat: tiles, uv: 1.2 },
         base: { mat: pbr(paint('s-mall-shopbase', [60, 52, 46], { rough: 0.4 })), h: 0.1 },
       },
       [Z.SERV]: {
@@ -1021,13 +1025,13 @@ export default {
       [Z.OFFICE]: {
         wall: { mat: pbr(paint('s-mall-office', [214, 206, 188], { rough: 0.75 })), u: 2, v: 2 },
         floor: { mat: photo('linoleum_brown', { uvScale: 2, color: 0xd8ccb8 }), uv: 2 },
-        ceil: { mat: photo('ceiling_interior', { uvScale: 2.4, color: 0xf0ece0 }), uv: 2.4 },
+        ceil: { mat: tiles, uv: 1.2 },
         base: { mat: pbr(paint('s-mall-officebase', [70, 58, 48], { rough: 0.4 })), h: 0.1 },
       },
       [Z.REST]: {
         wall: { mat: photo('square_tiled_wall', { uvScale: 2, roughness: 0.4, color: new THREE.Color(1.15, 1.12, 1.02) }), u: 2, v: 2 },
         floor: { mat: photo('terrazzo_tiles', { uvScale: 2, roughness: 0.55 }), uv: 2 },
-        ceil: { mat: photo('ceiling_interior', { uvScale: 2.4, color: 0xe0dccc }), uv: 2.4 },
+        ceil: { mat: tiles, uv: 1.2 },
       },
     };
     mats[Z.REST].floor.mat = mats[Z.PUB].floor.mat;
@@ -1051,7 +1055,16 @@ export default {
       mesh(world, buildCellQuads(g, inZone, ceilAt, false, s.ceil.uv), s.ceil.mat);
     }
     const wallPub = mats[Z.PUB].wall.mat;
-    mesh(world, buildRisers(g, { pred: open, uScale: 3, vScale: 3 }), wallPub);
+    mesh(world, buildRisers(g, { pred: (c) => open(c) && c !== HOLE, uScale: 3, vScale: 3 }), wallPub);
+    // the missing floor: a raw concrete shaft going down into the dark
+    if (holes.length) {
+      const rim = (i, j) => {
+        let y = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (g.standable(i + dx, j + dy)) y = g.heightOf(i + dx, j + dy);
+        return y;
+      };
+      mesh(world, buildWallFaces(g, { y0: PIT_DEPTH, y1: rim, uScale: 2, vScale: 2, solid: (c) => open(c) && c !== HOLE, open: (c) => c === HOLE }), new THREE.MeshStandardMaterial({ color: 0x3a3632, roughness: 0.95 }));
+    }
     mesh(world, buildRisers(g, { pred: open, ceil: ceilAt, uScale: 3, vScale: 3 }), wallPub);
     // stairs (the escalators get their own treads)
     const saved = g.ramp.slice();
@@ -1318,7 +1331,7 @@ export default {
     const beamMat = kit.std(0xf0ece2, 0.6);
     const skyGrey = Math.min(0.8, depth * 0.15);
     const skyTex = [0, 1, 2].map((d) => skylightTex(skyGrey, d * 0.5, d + 3));
-    const skyMats = skyTex.map((t) => new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1, 1, 1).multiplyScalar(1.2 - skyGrey * 0.35) }));
+    const skyMats = skyTex.map((t) => new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(0.92, 1, 1.12).multiplyScalar(1.15 - skyGrey * 0.3) }));
     const daylight = new THREE.Color(1, 0.96, 0.88).lerp(new THREE.Color(0.85, 0.87, 0.9), skyGrey);
     const skylights = [];
     const skylight = (x0, x1, z0, z1) => {
@@ -1885,7 +1898,6 @@ export default {
     let paIdx = rng.int(0, PA.length - 1);
     let paPending = -1;
     const lines = depth >= 2 ? [...PA, ...PA_DEEP] : PA;
-    console.warn('mall build ms', Math.round(performance.now() - T0));
     world.onUpdate = (dt, ctx) => {
       const cam = ctx.camera.position;
       const arr = dGeo.attributes.position.array;

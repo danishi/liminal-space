@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL, WATER, DOORWAY, VOID, HOLE, DIRS, PIT_DEPTH, buildWallFaces, buildCellQuads, buildFloors, buildStairs } from '../core/grid.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { waterNormalMap, paint, pbr } from '../core/surfaces.js';
+import { waterNormalMap, paint, pbr, woodPanel } from '../core/surfaces.js';
 import { caustics } from '../core/textures.js';
 import { mesh } from './common.js';
 import { LightPool } from '../core/lights.js';
@@ -20,6 +20,7 @@ import { applyPose, lookAt, beastPose, tailSway } from '../entities/figures.js';
 // wander from where you came in, the less the bathhouses agree with each other.
 
 const PI = Math.PI;
+const Y_WOOD_ = 0.3; // raised wooden floor of the changing rooms
 const MW = 17; // module (one bathhouse) width in cells, walls included
 const MD = 27; // module depth
 const NX = 3; // bathhouses per row
@@ -32,8 +33,11 @@ const ALLEY0 = ROW_A + MD;
 const ROW_B = ALLEY0 + ALLEY;
 const H = ROW_B + MD;
 
+const BANDAI_PH = 0.5; // the bandai platform
+const BANDAI_CH = 0.62; // its counter boards
+const BANDAI_TOP = Y_WOOD_ + BANDAI_PH + BANDAI_CH + 0.05;
 const Y_GENKAN = 0;
-const Y_WOOD = 0.3; // raised wooden floor of the changing rooms
+const Y_WOOD = Y_WOOD_;
 const Y_BATH = 0;
 const Y_RIM = 0.45; // bath rim you step over
 const Y_BENCH = 0.18; // the sitting step inside the bath
@@ -619,6 +623,79 @@ function wickerTexture() {
   }, { repeat: true });
 }
 
+/** Glaze colour for mosaic tiles (the scanned mosaic supplies grout and relief). */
+function glazeTexture(key, rgb, vary = 10) {
+  return canvasTex(`bath-glaze:${key}`, 256, 256, (c, w, h) => {
+    const r = rng32(key.length * 29 + 1);
+    c.fillStyle = `rgb(${rgb})`;
+    c.fillRect(0, 0, w, h);
+    for (let k = 0; k < 60; k++) {
+      const x = r() * w;
+      const y = r() * h;
+      const rad = 20 + r() * 60;
+      const g = c.createRadialGradient(x, y, 0, x, y, rad);
+      const d = (r() - 0.5) * vary;
+      g.addColorStop(0, `rgba(${d > 0 ? '255,255,255' : '0,0,0'},${Math.abs(d) / 100})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = g;
+      c.fillRect(0, 0, w, h);
+    }
+  }, { repeat: true });
+}
+
+/** A mirror at a washing station: fogged with steam, one wiped clear patch. */
+function mirrorTexture(wiped) {
+  return canvasTex(`bath-mirror:${wiped}`, 128, 160, (c, w, h) => {
+    const r = rng32(wiped ? 3 : 4);
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#b8c8cc');
+    g.addColorStop(1, '#8a9ca2');
+    c.fillStyle = g;
+    c.fillRect(0, 0, w, h);
+    if (wiped) {
+      c.fillStyle = 'rgba(150,170,178,0.7)';
+      c.beginPath();
+      c.ellipse(w * 0.5, h * 0.45, w * 0.3, h * 0.2, 0.2, 0, PI * 2);
+      c.fill();
+    }
+    for (let k = 0; k < 400; k++) {
+      c.fillStyle = `rgba(255,255,255,${0.1 + r() * 0.25})`;
+      c.beginPath();
+      c.arc(r() * w, r() * h, 0.5 + r() * 1.6, 0, PI * 2);
+      c.fill();
+    }
+    for (let k = 0; k < 10; k++) {
+      const x = r() * w;
+      c.strokeStyle = 'rgba(50,64,70,0.5)';
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(x, r() * h * 0.5);
+      c.lineTo(x + (r() - 0.5) * 3, h);
+      c.stroke();
+    }
+  });
+}
+
+/** Grey kawara roof tiles in rows. */
+function kawaraTexture() {
+  return canvasTex('bath-kawara', 256, 256, (c, w, h) => {
+    c.fillStyle = '#3a3e44';
+    c.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 32) {
+      const g = c.createLinearGradient(x, 0, x + 32, 0);
+      g.addColorStop(0, '#22262a');
+      g.addColorStop(0.5, '#6a7078');
+      g.addColorStop(1, '#22262a');
+      c.fillStyle = g;
+      c.fillRect(x, 0, 32, h);
+    }
+    for (let y = 0; y < h; y += 64) {
+      c.fillStyle = 'rgba(0,0,0,0.5)';
+      c.fillRect(0, y, w, 5);
+    }
+  }, { repeat: true });
+}
+
 function footprintTexture() {
   return canvasTex('bath-foot', 128, 256, (c, w, h) => {
     c.clearRect(0, 0, w, h);
@@ -642,16 +719,14 @@ function footprintTexture() {
 function puffTexture() {
   return canvasTex('bath-puff', 128, 128, (c, w, h) => {
     const r = rng32(5);
-    for (let k = 0; k < 7; k++) {
-      const x = w * (0.35 + r() * 0.3);
-      const y = h * (0.35 + r() * 0.3);
-      const rad = w * (0.18 + r() * 0.2);
-      const g = c.createRadialGradient(x, y, 0, x, y, rad);
-      g.addColorStop(0, 'rgba(255,255,255,0.5)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      c.fillStyle = g;
-      c.fillRect(0, 0, w, h);
-    }
+    void r;
+    const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+    g.addColorStop(0, 'rgba(255,255,255,0.8)');
+    g.addColorStop(0.4, 'rgba(255,255,255,0.45)');
+    g.addColorStop(0.75, 'rgba(255,255,255,0.12)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, w, h);
   });
 }
 
@@ -1067,9 +1142,8 @@ function washStation(k, rng, { fogged = false, bottles = 0, width = 1 } = {}) {
   k.cyl(g, 0.045, 0.03, 0.05, chrome, 0.3, 1.42, 0.08, -0.9, 0, 0, 10);
   k.cyl(g, 0.012, 0.012, 0.07, chrome, 0.3, 1.4, 0.045, PI / 2, 0, 0, 6);
   // mirror
-  const mirror = fogged
-    ? k.mat('mirrorFog', () => new THREE.MeshStandardMaterial({ color: 0xb8c4c6, roughness: 0.55, metalness: 0.6 }))
-    : k.mat('mirror', () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.03, metalness: 1, envMapIntensity: 1.2 }));
+  const wiped = !fogged && rng.chance(0.5);
+  const mirror = k.mat(`mirror:${wiped}:${fogged}`, () => new THREE.MeshStandardMaterial({ map: mirrorTexture(wiped), color: fogged ? 0xa8b0b0 : 0xffffff, roughness: 0.12, metalness: 0.5, envMapIntensity: 0.6 }));
   k.box(g, 0.4, 0.52, 0.012, chrome, 0, 1.2, 0.006);
   k.plane(g, 0.37, 0.49, mirror, 0, 1.2, 0.0125);
   for (let b = 0; b < bottles; b++) {
@@ -1085,12 +1159,12 @@ function bandaiBooth(k, rng) {
   const wood = k.std(0x6a4226, 0.55);
   const dark = k.std(0x3a2414, 0.6);
   const top = k.std(0x8a5a32, 0.35);
-  const PH = 0.85;
+  const PH = BANDAI_PH;
   // platform
   k.box(g, 3.0, PH, 2.0, dark, 0, PH / 2, 0);
   for (let x = -1.35; x <= 1.36; x += 0.45) k.box(g, 0.04, PH - 0.1, 0.02, wood, x, PH / 2, -1.005);
   // front and side counters
-  const CH = 0.72;
+  const CH = BANDAI_CH;
   k.box(g, 3.0, CH, 0.06, wood, 0, PH + CH / 2, -0.97);
   for (const s of [-1, 1]) {
     k.box(g, 0.06, CH, 2.0, wood, s * 1.47, PH + CH / 2, 0);
@@ -1102,8 +1176,8 @@ function bandaiBooth(k, rng) {
   // slatted panels
   for (let x = -1.3; x <= 1.31; x += 0.2) k.box(g, 0.03, CH - 0.1, 0.02, dark, x, PH + CH / 2, -1.005);
   // seat cushion and a low stool
-  k.box(g, 0.44, 0.42, 0.4, dark, 0, PH + 0.21, 0.15);
-  k.box(g, 0.5, 0.06, 0.48, k.std(0x7a2a2a, 0.9), 0, PH + 0.45, 0.15);
+  k.box(g, 0.44, 0.4, 0.4, dark, 0, PH + 0.2, -0.3);
+  k.box(g, 0.5, 0.06, 0.48, k.std(0x7a2a2a, 0.9), 0, PH + 0.43, -0.3);
   // things on the counter: a tea cup, a bell, a lucky cat
   k.cyl(g, 0.04, 0.035, 0.07, k.std(0x5a6a4a, 0.3), -0.9, PH + CH + 0.085, -0.85);
   k.cyl(g, 0.045, 0.06, 0.05, k.std(0xc8a040, 0.25, 0.9), 0.95, PH + CH + 0.075, -0.85);
@@ -1121,7 +1195,7 @@ function bandaiBooth(k, rng) {
   // price list pinned to the front
   const price = boardTexture('bandai-price', 512, 256, '#f2ecd8', [['入浴料 520円', 0.42, '#1a1a1a'], ['Bath ¥520', 0.26, '#8a1a1a', 600]], { border: '#3a2414' });
   k.plane(g, 0.5, 0.25, k.mat('bandaiPrice', () => new THREE.MeshStandardMaterial({ map: price, roughness: 0.8 })), 0, PH + CH * 0.55, -1.02, 0, PI, 0);
-  g.userData.seat = new THREE.Vector3(0, PH + 0.02, 0.15);
+  g.userData.seat = new THREE.Vector3(0, PH, -0.3);
   return g;
 }
 
@@ -1410,14 +1484,12 @@ export default {
         side[k] = s;
         modAt[k] = m.idx;
       };
-      for (let lj = 1; lj <= 3; lj++) for (let li = 1; li <= 15; li++) set(li, lj, FLOOR, Y_GENKAN, Z_GENKAN);
+      for (let lj = 1; lj <= 3; lj++) for (let li = 4; li <= 12; li++) set(li, lj, FLOOR, Y_GENKAN, Z_GENKAN);
       for (let li = 7; li <= 9; li++) set(li, 0, DOORWAY, Y_GENKAN, Z_GENKAN);
       for (const s of [0, 1]) {
         const L = (li) => (s ? MW - 1 - li : li);
-        for (const li of [3, 4]) {
-          set(L(li), 4, DOORWAY, Y_WOOD, Z_DRESS, s);
-          set(L(li), 13, DOORWAY, Y_WOOD, Z_DRESS, s);
-        }
+        for (const li of [5, 6]) set(L(li), 4, DOORWAY, Y_WOOD, Z_DRESS, s);
+        for (const li of [3, 4]) set(L(li), 13, DOORWAY, Y_WOOD, Z_DRESS, s);
         for (let lj = 5; lj <= 12; lj++) for (let li = 1; li <= 7; li++) set(L(li), lj, FLOOR, Y_WOOD, Z_DRESS, s);
         for (let lj = 14; lj <= 25; lj++) for (let li = 1; li <= 7; li++) set(L(li), lj, FLOOR, Y_BATH, Z_BATH, s);
         for (let lj = 16; lj <= 19; lj++) {
@@ -1519,7 +1591,7 @@ export default {
     }
     // side doors from the genkan and bath halls into the passages
     for (const m of mods) {
-      for (const [li, lj, out] of [[0, 2, -1], [16, 2, 17], [0, 16, -1], [16, 16, 17]]) {
+      for (const [li, lj, out] of [[0, 16, -1], [16, 16, 17]]) {
         const [i, j] = cellL(m, li, lj);
         const [oi, oj] = cellL(m, out, lj);
         if (zoneAt(oi, oj) !== Z_GAP) continue;
@@ -1604,22 +1676,31 @@ export default {
 
     // ---- materials
     const u = Math.min(1, world.depth * 0.12);
-    const tileFloor = photo('blue_floor_tiles_01', { uvScale: 1.4, roughness: 0.6, color: new THREE.Color(1.05, 1.08, 1.12) });
-    const basin = photo('blue_floor_tiles_01', { uvScale: 1.2, roughness: 0.5, color: new THREE.Color(0.8, 1.0, 1.05), emissive: 0xfff0d0, emissiveMap: caustics(), emissiveIntensity: 0.12 });
+    // the scanned mosaic gives grout and relief; the glaze colour is ours
+    const mosaic = (key, rgb, uv, opts = {}) => {
+      const map = glazeTexture(key, rgb).clone();
+      map.repeat.set(uv / 2, uv / 2);
+      map.userData.cached = true;
+      return photo('square_tiled_wall', { uvScale: uv, map, roughness: 0.3, ...opts });
+    };
+    const tileFloor = mosaic('floor', [178, 198, 204], 0.55, { roughness: 0.45 });
+    const basin = mosaic('basin', [120, 190, 205], 0.6, { emissive: 0xfff0d0, emissiveMap: caustics(), emissiveIntensity: 0.12 });
     const causticMap = basin.emissiveMap;
     const rimMat = photo('terrazzo_tiles', { uvScale: 1.5, roughness: 0.35, color: new THREE.Color(1.0, 1.0, 0.98) });
-    const tileWall = photo('square_tiled_wall', { uvScale: 1.6, roughness: 0.25, color: new THREE.Color(1.02, 1.06, 1.08) });
+    const tileWall = mosaic('wall', [226, 236, 236], 0.8, { roughness: 0.22 });
+    const tileBand = mosaic('band', [60, 110, 160], 0.8, { roughness: 0.22 });
     const upperBath = pbr(paint('s-bath-upper', [188, 212, 214], { rough: 0.55 }));
     const bathCeil = pbr(paint('s-bath-ceil', [214, 224, 222], { rough: 0.6 }));
     const woodFloor = photo('old_wooden_floor_02', { uvScale: 2, roughness: 0.55, color: new THREE.Color(1.0, 0.92, 0.84) });
     const genkanFloor = photo('terrazzo_tiles', { uvScale: 2, roughness: 0.45, color: new THREE.Color(0.82, 0.8, 0.76) });
     const plaster = photo('beige_wall_001', { uvScale: 2, color: new THREE.Color(1.05, 1.0, 0.92) });
-    const wainscot = photo('dark_paneled_wood', { uvScale: 1.4, roughness: 0.55, color: new THREE.Color(0.9, 0.8, 0.72) });
-    const woodCeil = photo('brown_planks_03', { uvScale: 1, roughness: 0.6, color: new THREE.Color(0.95, 0.85, 0.72) });
+    const wainscot = pbr(woodPanel('s-bath-wainscot', [132, 92, 58], 0.4), { normalScale: 0.6 });
+    const woodCeil = photo('brown_planks_03', { uvScale: 1, roughness: 0.6, color: new THREE.Color(1.4, 1.25, 1.05) });
     const riserWood = photo('dark_paneled_wood', { uvScale: 1, roughness: 0.5, color: new THREE.Color(0.75, 0.6, 0.5) });
     const street = photo('concrete_floor_02', { uvScale: 2, roughness: 0.55, color: new THREE.Color(0.62, 0.62, 0.64) });
+    const paving = photo('blue_floor_tiles_01', { uvScale: 1.6, roughness: 0.4, color: new THREE.Color(0.55, 0.58, 0.64) });
     const facade = photo('beige_wall_001', { uvScale: 2, color: new THREE.Color(0.78, 0.74, 0.68) });
-    const facadeLow = photo('dark_paneled_wood', { uvScale: 1.4, roughness: 0.6, color: new THREE.Color(0.6, 0.5, 0.42) });
+    const facadeLow = pbr(woodPanel('s-bath-facade', [70, 46, 30], 0.5), { normalScale: 0.6 });
     const backWall = photo('concrete_wall_004', { uvScale: 2, color: new THREE.Color(0.72, 0.72, 0.72) });
     const fence = photo('bamboo_wall', { uvScale: 2, color: 0xb8a888 });
     const terrFloor = photo('stone_pathway_02', { uvScale: 2.2, color: 0xb8b4ac });
@@ -1639,7 +1720,8 @@ export default {
       // a dark trim rail where the wood panelling stops
       wall({ solid: (c) => c === WALL, open: inZone(z), y0: (i, j) => floorOf(i, j) + band - 0.02, y1: (i, j) => floorOf(i, j) + band + 0.05, inset: 0.012, uScale: 1, vScale: 1 }, riserWood);
     }
-    wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => Math.min(ceilOf(i, j), 2.3), uScale: 1.6, vScale: 1.6 }, tileWall);
+    wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => Math.min(ceilOf(i, j), Math.max(floorOf(i, j), 0) + 0.75), uScale: 1.6, vScale: 1.6 }, tileBand);
+    wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: (i, j) => Math.max(floorOf(i, j), 0) + 0.75, y1: (i, j) => Math.min(ceilOf(i, j), 2.3), uScale: 1.6, vScale: 1.6 }, tileWall);
     wall({ solid: (c) => c === WALL, open: openInterior(Z_BATH), y0: () => 2.3, y1: (i, j) => ceilOf(i, j), uScale: 2, vScale: 2 }, upperBath);
     // low partitions and islands
     const lowNb = new Float32Array(N);
@@ -1651,8 +1733,10 @@ export default {
       }
     }
     const lowSolid = (c, i, j) => c === VOID && lowTop[K(i, j)] > 0;
-    wall({ solid: lowSolid, open: inZone(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => lowNb[K(i, j)], uScale: 1.6, vScale: 1.6 }, tileWall);
-    wall({ solid: lowSolid, open: inZone(Z_DRESS), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => lowNb[K(i, j)], uScale: 1.4, vScale: 1.4 }, wainscot);
+    wall({ solid: lowSolid, open: inZone(Z_BATH), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => Math.max(floorOf(i, j), 0) + 0.75, uScale: 1.6, vScale: 1.6 }, tileBand);
+    wall({ solid: lowSolid, open: inZone(Z_BATH), y0: (i, j) => Math.max(floorOf(i, j), 0) + 0.75, y1: (i, j) => lowNb[K(i, j)], uScale: 1.6, vScale: 1.6 }, tileWall);
+    wall({ solid: lowSolid, open: inZone(Z_DRESS), y0: (i, j) => floorOf(i, j) - 0.02, y1: (i, j) => floorOf(i, j) + 1.1, uScale: 1.4, vScale: 1.4 }, wainscot);
+    wall({ solid: lowSolid, open: inZone(Z_DRESS), y0: (i, j) => floorOf(i, j) + 1.1, y1: (i, j) => lowNb[K(i, j)], uScale: 2, vScale: 2 }, plaster);
     const capGeo = buildCellQuads(g, lowSolid, (i, j) => lowTop[K(i, j)] + 0.001, true, 1.6);
     mesh(world, capGeo, tileWall);
 
@@ -1667,7 +1751,8 @@ export default {
     floorQ((c, i, j) => zoneAt(i, j) === Z_BATH && c !== WATER && Math.abs(floorOf(i, j) - Y_RIM) > 0.01, 1.4, tileFloor);
     floorQ((c, i, j) => zoneAt(i, j) === Z_BATH && c !== WATER && Math.abs(floorOf(i, j) - Y_RIM) <= 0.01, 1.5, rimMat);
     floorQ((c, i, j) => c === WATER && bathKind[K(i, j)] !== 3, 1.2, basin);
-    floorQ((c, i, j) => zoneAt(i, j) === Z_ALLEY || zoneAt(i, j) === Z_GAP, 2, street);
+    floorQ((c, i, j) => zoneAt(i, j) === Z_ALLEY, 1.6, paving);
+    floorQ((c, i, j) => zoneAt(i, j) === Z_GAP, 2, street);
     floorQ((c, i, j) => zoneAt(i, j) === Z_TERR && c !== WATER, 2.2, terrFloor);
     floorQ((c, i, j) => c === WATER && bathKind[K(i, j)] === 3, 2.2, terrFloor);
     const pits = buildCellQuads(g, (c) => c === HOLE, PIT_DEPTH, true, 2);
@@ -1698,7 +1783,8 @@ export default {
           const hi = lowEnd(i, j) ?? g.edgeHeight(i, j, dx, dy);
           const lo = lowEnd(oi, oj) ?? g.edgeHeight(oi, oj, -dx, -dy);
           if (hi <= lo + 0.02) continue;
-          const mat = riserMat(i, j);
+          const lowC = g.get(oi, oj);
+          const mat = (lowC === WATER || lowC === HOLE) && bathKind[K(oi, oj)] !== 3 ? basin : riserMat(i, j);
           if (!riserQ.has(mat)) riserQ.set(mat, new Quads());
           riserQ.get(mat).vface(i, j, s, lo, hi, mat === riserWood ? 1 : 1.6);
         }
@@ -1835,18 +1921,16 @@ export default {
       // ---------------- genkan
       // shoe lockers along the front wall and the sides
       let tagNo = 1 + m.idx * 7;
-      for (const [lx0, lx1] of [[1.5, 6.9], [10.1, 15.5]]) {
+      for (const [lx0, lx1] of [[4.05, 6.95], [10.05, 12.95]]) {
         const w = lx1 - lx0;
         const grp = lockerBank(kit, 'shoe', w, 1.75, tagNo, 0.15 + mu * 0.5);
         tagNo += 42;
         place(grp, m, 0, (lx0 + lx1) / 2, 1.22, 0, Y_GENKAN, [w, 0.44]);
       }
       for (const s of [0, 1]) {
-        const hasDoor = (m.doors || []).some((d) => d.lj === 2 && (d.li === 0) === (s === 0));
-        if (hasDoor) continue;
         const grp = lockerBank(kit, 'shoe', 2.1, 1.75, tagNo, 0.2 + mu * 0.5);
         tagNo += 42;
-        place(grp, m, s, 1.22, 2.55, PI / 2, Y_GENKAN, [2.1, 0.44]);
+        place(grp, m, s, 4.22, 2.55, PI / 2, Y_GENKAN, [2.1, 0.44]);
       }
       // the wall between the noren: prices, a clock, the day's bath
       const priceTex = boardTexture(`price:${mu > 0.9 ? 'late' : 'ok'}`, 512, 640, [236, 226, 204], [
@@ -1857,15 +1941,15 @@ export default {
       ], { wood: true, border: '#3a2414' });
       const pp = at(m, 0, 8.5, 3.98, PI);
       kit.add(hangingPlate(kit, priceTex, 0.8, 1.0, 0, 0, 0, 0, { glow: 0.12 }), pp.x, pp.z, pp.yaw, { y: 1.55 });
-      clock(m, 0, 6.3, 3.98, PI, 2.35);
+      clock(m, 0, 9.6, 3.98, PI, 2.3);
       const today = boardTexture('today', 256, 512, '#f4efe2', [['本日の', 0.12, '#1a1a1a'], ['薬湯', 0.2, '#1a6a2a', 900, SERIF], ['ゆず湯', 0.22, '#c07a10', 900, SERIF], ['YUZU', 0.08, '#6a5a3a', 600], ['BATH', 0.08, '#6a5a3a', 600]], { border: '#1a6a2a' });
-      const tp = at(m, 0, 10.6, 3.98, PI);
+      const tp = at(m, 0, 7.45, 3.98, PI);
       kit.add(hangingPlate(kit, today, 0.35, 0.7, 0, 0, 0, 0, { glow: 0.1 }), tp.x, tp.z, tp.yaw, { y: 1.5 });
       // umbrella stand, a plant, a slatted step
       const plant = new THREE.Group();
       kit.model(plant, 'potted_plant_04', 0, 0, 0, r2() * 6, 0.9);
-      place(plant, m, 1, 5.5, 3.5, 0, Y_GENKAN, [0.5, 0.5]);
-      place(P.umbrella.build(kit, rng), m, 0, 6.6, 1.75, 0.4, Y_GENKAN);
+      place(plant, m, 1, 4.45, 3.55, 0, Y_GENKAN, [0.5, 0.5]);
+      place(P.umbrella.build(kit, rng), m, 1, 6.5, 1.75, 0.4, Y_GENKAN);
       // entrance: glass sliding doors, the middle two slid open
       {
         const grp = new THREE.Group();
@@ -1900,12 +1984,12 @@ export default {
         fixture(p.x, 3.45, p.z, { intensity: 0.8 });
         const tv = crtTv(kit, m.idx);
         const tp2 = at(m, 0, 9.75, 5.3, -1.0);
-        kit.add(tv, tp2.x, tp2.z, tp2.yaw, { y: Y_WOOD + 0.85 + 0.72 + 0.05 });
+        kit.add(tv, tp2.x, tp2.z, tp2.yaw, { y: BANDAI_TOP });
         // the empty bandai keeps a cup of tea and today's paper
         const paper = new THREE.Group();
         kit.plane(paper, 0.42, 0.3, kit.mat('paper', () => new THREE.MeshStandardMaterial({ map: newspaperTexture(), roughness: 0.9, side: THREE.DoubleSide })), 0, 0.001, 0, -PI / 2, 0, 0.1);
         const pp2 = at(m, 0, 7.2, 6.3, 0.3);
-        kit.add(paper, pp2.x, pp2.z, pp2.yaw, { y: Y_WOOD + 0.85 + 0.72 + 0.05 });
+        kit.add(paper, pp2.x, pp2.z, pp2.yaw, { y: BANDAI_TOP });
       }
       // ---------------- both sides: changing room and bath hall
       for (const s of [0, 1]) {
@@ -1915,10 +1999,10 @@ export default {
           const tex = norenTexture(kind);
           const panels = [];
           const nm = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.95 });
-          const p = at(m, s, 4.0, 4.05, 0);
+          const p = at(m, s, 6.0, 4.05, 0);
           const holder = new THREE.Group();
           holder.position.set(p.x, Y_WOOD + 2.0, p.z);
-          holder.rotation.y = p.yaw;
+          holder.rotation.y = p.yaw + PI;
           for (let n = 0; n < 3; n++) {
             const geo = new THREE.PlaneGeometry(0.62, 1.05, 1, 4);
             geo.translate(0, -0.525, 0);
@@ -1936,14 +2020,14 @@ export default {
           world.root.add(holder);
           holder.updateMatrixWorld(true);
           for (const pm of panels) pm.userData.world = pm.getWorldPosition(new THREE.Vector3());
-          const nrm = new THREE.Vector3(Math.sin(p.yaw), 0, Math.cos(p.yaw));
+          const nrm = new THREE.Vector3(-Math.sin(p.yaw), 0, -Math.cos(p.yaw));
           world.add(new Noren(world, panels, new THREE.Vector3(p.x, 0, p.z), nrm));
         }
         // changing room: lockers, baskets, bench, fan, fridge, massage chair, scale
         const taken = 0.1 + mu * 0.6;
         for (let n = 0; n < 4; n++) {
           const grp = lockerBank(kit, 'dress', 1.4, 1.85, 1 + n * 20 + s * 80, taken);
-          place(grp, m, s, 1.22, 6.1 + n * 1.45, PI / 2, Y_WOOD, [1.4, 0.44]);
+          place(grp, m, s, 1.22, 6.9 + n * 1.45, PI / 2, Y_WOOD, [1.4, 0.44]);
         }
         {
           const shelf = cubbyShelf(kit, 5, 2);
@@ -1987,7 +2071,7 @@ export default {
         }
         {
           const fr = milkFridge(kit);
-          const p = place(fr, m, s, 5.55, 5.3, 0, Y_WOOD, [0.66, 0.55]);
+          const p = place(fr, m, s, 2.0, 5.3, 0, Y_WOOD, [0.66, 0.55]);
           bakeSources.push({ pos: new THREE.Vector3(p.x + Math.sin(p.yaw) * 0.5, Y_WOOD + 0.9, p.z + Math.cos(p.yaw) * 0.5), color: new THREE.Color(0.85, 0.95, 1), intensity: 2.2, range: 5 });
           fridges.push(poke.add({ pos: new THREE.Vector3(p.x + Math.sin(p.yaw) * 0.3, Y_WOOD + 1.0, p.z + Math.cos(p.yaw) * 0.3), prompt: 'Take a milk', kind: 'fridge', m }));
         }
@@ -2030,7 +2114,6 @@ export default {
         kit.add(hangingPlate(kit, pick(0), 0.42, 0.56, 0, 0, 0), pa.x, pa.z, pa.yaw, { y: 2.45 });
         const pb = at(m, s, 7.98, 12.2, -PI / 2);
         kit.add(hangingPlate(kit, pick(1), 0.42, 0.56, 0, 0, 0), pb.x, pb.z, pb.yaw, { y: 1.6 + Y_WOOD });
-        clock(m, s, 2.0, 5.02, 0, Y_WOOD + 2.5);
         // steamy glass above the basket shelf
         {
           const gm = kit.mat('steamGlass', () => {
@@ -2072,7 +2155,7 @@ export default {
           kit.add(br, p.x, p.z, p.yaw, { y: 2.53 });
         }
         // lights
-        for (const lz of [6.6, 10.6]) {
+        for (const lz of [6.4, 9.0, 11.6]) {
           const p = at(m, s, 4.0, lz);
           fixture(p.x, 3.47, p.z, { intensity: 1, rot: PI / 2 });
         }
@@ -2140,7 +2223,7 @@ export default {
         fixture(p.x, BATH_CEIL_HI - 0.02, p.z, { intensity: 1.7, rot: PI / 2 });
       }
       // genkan lights
-      for (const lx of [4.5, 12.5]) {
+      for (const lx of [6.0, 11.0]) {
         const p = at(m, 0, lx, 2.2);
         fixture(p.x, 2.98, p.z, { intensity: 0.9 });
       }
@@ -2165,15 +2248,39 @@ export default {
       {
         const f = at(m, 0, 8.5, -0.02, PI);
         const grp = new THREE.Group();
-        // eave over the entrance
-        const roof = kit.std(0x3a3e44, 0.5, 0.3);
-        kit.box(grp, 5.2, 0.08, 1.3, roof, 0, 3.0, 0.62, 0.22);
-        kit.box(grp, 5.2, 0.1, 0.08, kit.std(0x2a1c12, 0.6), 0, 2.84, 1.26);
+        // tiled eaves over the entrance and along the top of the front
+        const kawara = kit.mat('kawara', () => {
+          const t = kawaraTexture().clone();
+          t.repeat.set(6, 1);
+          t.userData.cached = true;
+          return new THREE.MeshStandardMaterial({ map: t, roughness: 0.45, metalness: 0.2 });
+        });
+        const eaveWood = kit.std(0x2a1c12, 0.6);
+        kit.box(grp, 5.4, 0.1, 1.4, kawara, 0, 3.0, 0.66, 0.3);
+        kit.box(grp, 5.4, 0.12, 0.1, eaveWood, 0, 2.8, 1.32);
+        for (const x of [-2.5, 2.5]) kit.box(grp, 0.1, 0.1, 1.3, eaveWood, x, 2.9, 0.65, 0.3);
+        kit.box(grp, MW, 0.12, 1.0, kawara, 0, 4.75, 0.42, 0.35);
+        kit.box(grp, MW, 0.14, 0.08, eaveWood, 0, 4.6, 0.9);
+        // wooden lattice either side of the door
+        for (const sx of [-1, 1]) {
+          for (let n = 0; n < 16; n++) kit.box(grp, 0.035, 1.7, 0.05, eaveWood, sx * (2.2 + n * 0.1), 1.75, 0.05);
+          kit.box(grp, 1.65, 0.06, 0.07, eaveWood, sx * 2.95, 2.62, 0.05);
+          kit.box(grp, 1.65, 0.06, 0.07, eaveWood, sx * 2.95, 0.9, 0.05);
+        }
+        // red paper lanterns
+        const lanTex = boardTexture('chochin', 256, 256, '#e03a1a', [['ゆ', 0.7, '#1a0a06', 900, SERIF]]);
+        const lanMat = kit.mat('chochin', () => new THREE.MeshStandardMaterial({ map: lanTex, emissive: 0xffffff, emissiveMap: lanTex, emissiveIntensity: 1.1, roughness: 0.8 }));
+        for (const sx of [-1, 1]) {
+          kit.sphere(grp, 0.2, lanMat, sx * 1.85, 2.3, 1.05, 1, 1.35, 1, 16);
+          kit.cyl(grp, 0.12, 0.12, 0.05, kit.std(0x111111, 0.5), sx * 1.85, 2.58, 1.05);
+          kit.cyl(grp, 0.12, 0.12, 0.05, kit.std(0x111111, 0.5), sx * 1.85, 2.02, 1.05);
+          kit.cyl(grp, 0.01, 0.01, 0.25, kit.std(0x111111, 0.5), sx * 1.85, 2.72, 1.05);
+        }
         // name board
         const nameTex = boardTexture(`name:${m.name}`, 1024, 256, [70, 44, 24], [[m.name, 0.72, '#f4e8c8', 900, SERIF]], { wood: true, border: '#c8a060' });
         kit.add(hangingPlate(kit, nameTex, 2.6, 0.65, 0, 0, 0, 0, { glow: 0.35, frame: 0x2a1a0e }), 0, 0, 0);
         const nb = kit.placed.pop();
-        nb.position.set(0, 3.75, 0.03);
+        nb.position.set(0, 4.0, 0.03);
         grp.add(nb);
         // glowing ゆ light box
         const yuTex = boardTexture('yu-box', 256, 256, '#fbf6ea', [['ゆ', 0.8, '#c01818', 900]]);
@@ -2182,9 +2289,9 @@ export default {
         const face = kit.mat('yuFace', () => new THREE.MeshStandardMaterial({ map: yuTex, emissive: 0xffffff, emissiveMap: yuTex, emissiveIntensity: 1.3 }));
         kit.plane(box, 0.46, 0.46, face, 0, 0, 0.081);
         kit.plane(box, 0.46, 0.46, face, 0, 0, -0.081, 0, PI, 0);
-        box.position.set(-2.1, 2.7, 0.5);
+        box.position.set(-3.2, 3.55, 0.45);
         box.rotation.y = PI / 2;
-        kit.box(grp, 0.04, 0.04, 0.5, kit.std(0x333333, 0.5, 0.6), -2.1, 2.98, 0.25);
+        kit.box(grp, 0.04, 0.04, 0.5, kit.std(0x333333, 0.5, 0.6), -3.2, 3.83, 0.22);
         grp.add(box);
         kit.add(grp, f.x, f.z, f.yaw, { y: 0 });
         const n = new THREE.Vector3(Math.sin(f.yaw), 0, Math.cos(f.yaw));
@@ -2316,11 +2423,11 @@ export default {
         bakeSources.push({ pos: new THREE.Vector3(x, Y_TERR + 1.3, z), color: new THREE.Color(1, 0.65, 0.3), intensity: 3.2, range: 7 });
       }
       for (let a = 0; a < PI * 2; a += PI / 6) {
-        const x = rcx + Math.cos(a) * 7.9;
-        const z = rcz + Math.sin(a) * 3.2;
+        const x = rcx + Math.cos(a) * 8.2;
+        const z = rcz + Math.sin(a) * 3.5;
         if (Math.sin(a) > 0.3 && Math.abs(Math.cos(a)) < 0.6) continue; // the way in
         const rk = new THREE.Group();
-        kit.model(rk, 'rock_moss_set_01', 0, 0, 0, rng.float(0, 6), rng.float(0.12, 0.18));
+        kit.model(rk, 'rock_moss_set_01', 0, 0, 0, rng.float(0, 6), rng.float(0.2, 0.28));
         kit.add(rk, x, z, 0, { y: Y_TERR - 0.15 });
       }
       const sign = boardTexture('roten', 512, 160, [70, 44, 24], [['露天風呂', 0.55, '#f4e8c8', 900, SERIF], ['OPEN-AIR BATH', 0.25, '#e8d0a0', 700]], { wood: true });
@@ -2367,7 +2474,7 @@ export default {
     // ---- steam over the baths
     const wet = [];
     for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) if (isWet(i, j)) wet.push([i, j]);
-    const SN = 520;
+    const SN = 320;
     const sPos = new Float32Array(SN * 3);
     const sAlpha = new Float32Array(SN);
     const sSize = new Float32Array(SN);
@@ -2378,7 +2485,7 @@ export default {
       sPos[n * 3 + 1] = surfOf(i, j) + 0.05;
       sPos[n * 3 + 2] = j + Math.random();
       sLife[n] = { t: t0 * 8, max: 6 + Math.random() * 5, vx: (Math.random() - 0.5) * 0.12, vz: (Math.random() - 0.5) * 0.12, vy: 0.18 + Math.random() * 0.2 };
-      sSize[n] = 0.9 + Math.random() * 1.2;
+      sSize[n] = 2.0 + Math.random() * 2.0;
     };
     for (let n = 0; n < SN; n++) respawn(n);
     const sGeo = new THREE.BufferGeometry();
@@ -2386,7 +2493,7 @@ export default {
     sGeo.setAttribute('aAlpha', new THREE.BufferAttribute(sAlpha, 1));
     sGeo.setAttribute('aSize', new THREE.BufferAttribute(sSize, 1));
     const steamMat = new THREE.ShaderMaterial({
-      uniforms: { tex: { value: puffTexture() }, uScale: { value: 600 }, uColor: { value: new THREE.Color(0.9, 0.93, 0.95) } },
+      uniforms: { tex: { value: puffTexture() }, uScale: { value: 600 }, uColor: { value: new THREE.Color(0.95, 0.97, 1.0) } },
       vertexShader: /* glsl */ `
         attribute float aAlpha;
         attribute float aSize;
@@ -2395,8 +2502,8 @@ export default {
         void main() {
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mv;
-          gl_PointSize = aSize * uScale / max(0.5, -mv.z);
-          vA = aAlpha * smoothstep(0.3, 1.5, -mv.z);
+          gl_PointSize = min(aSize * uScale / max(0.5, -mv.z), 220.0);
+          vA = aAlpha * smoothstep(0.6, 2.5, -mv.z);
         }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D tex;
@@ -2419,8 +2526,8 @@ export default {
     const keeperModel = LOOKS.keeper();
     applyPose(keeperModel.userData.rig, 'sit');
     const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.32), new THREE.MeshStandardMaterial({ map: newspaperTexture(), roughness: 0.9, side: THREE.DoubleSide }));
-    paper.position.set(0, -0.05, 0.3);
-    paper.rotation.x = -0.5;
+    paper.position.set(0, -0.12, 0.3);
+    paper.rotation.x = -0.25;
     keeperModel.userData.rig.bones.chest.add(paper);
     let keeperMod = spawnMod;
     const seatAt = (m) => m.bandai.seat.clone();
@@ -2465,10 +2572,10 @@ export default {
       const rig = keeperModel.userData.rig;
       applyPose(rig, 'sit');
       const t = keeper.t;
-      rig.rot('armL', -0.95, 0.25, 0.25);
-      rig.rot('foreL', -1.0, 0, 0);
-      rig.rot('armR', -0.95, -0.25, -0.25);
-      rig.rot('foreR', -1.0, 0, 0);
+      rig.rot('armL', -0.55, 0.2, -0.05);
+      rig.rot('foreL', -1.35, 0.3, 0);
+      rig.rot('armR', -0.55, -0.2, 0.05);
+      rig.rot('foreR', -1.35, -0.3, 0);
       rig.rot('spine', 0.12 + Math.sin(t * 1.4) * 0.01, 0, 0);
       const p = ctx.player.pos;
       const near = Math.hypot(p.x - keeperModel.position.x, p.z - keeperModel.position.z) < 5.5;
@@ -2556,7 +2663,7 @@ export default {
       const catFig = LOOKS.cat();
       beastPose(catFig, 'loaf');
       const cp = at(m, rng.int(0, 1), 8.5 - 1.32, 6.2, PI);
-      catFig.position.set(cp.x, Y_WOOD + 0.85 + 0.72 + 0.05, cp.z);
+      catFig.position.set(cp.x, BANDAI_TOP, cp.z);
       catFig.rotation.y = cp.yaw;
       const cat = new NPC(world, { name: 'the bandai cat', pos: catFig.position.clone(), model: catFig, voice: 1.6, radius: 0, face: false, prompt: 'Pet the cat', conversations: [['(It purrs. It has been left in charge.)'], ['(It collects your ¥520 with a paw and does nothing with it.)'], ['Mrrp.']], onTalk: (game) => game.audio.purr(null, 2) });
       cat.aimHeight = 0.2;
@@ -2665,7 +2772,7 @@ export default {
         sPos[n * 3 + 1] += L.vy * dt;
         sPos[n * 3 + 2] += L.vz * dt;
         const f = L.t / L.max;
-        sAlpha[n] = Math.sin(f * PI) * 0.16;
+        sAlpha[n] = Math.sin(f * PI) * 0.055;
         sSize[n] += dt * 0.12;
       }
       sGeo.attributes.position.needsUpdate = true;
@@ -2874,7 +2981,7 @@ export default {
     Object.assign(world.env, {
       background: 0x0b0f18,
       backgroundTex: hdri('qwantani_night_puresky'),
-      backgroundIntensity: 0.55,
+      backgroundIntensity: 0.28,
       fog: new THREE.FogExp2(new THREE.Color(0x8c9aa4).lerp(new THREE.Color(0x4a5258), u), 0.028 + world.depth * 0.003),
       exposure: 1.05,
       postfx: { bloom: 0.45, bloomThreshold: 0.78, bloomRadius: 0.6, grain: 0.045, vignette: 0.3, chroma: 0.0012, scan: 0.02, tint: [1.0, 1.01, 1.03] },
@@ -2883,7 +2990,7 @@ export default {
       ambience: 'bath',
       reverb: [3.5, 3],
       flashlight: false,
-      bake: { fixtureScale: 0.2, bounce: 0.5, hemi: 0.5, dynamic: 0.45, radius: 8, tess: 0.8 },
+      bake: { fixtureScale: 0.3, bounce: 0.5, hemi: 0.5, dynamic: 0.45, radius: 8, tess: 0.8 },
     });
   },
 

@@ -225,15 +225,6 @@ const armTex = () => canvasTex('g-arm', 256, 32, (ctx, w, h) => {
   }
 });
 
-const beamTex = () => canvasTex('g-beam', 16, 128, (ctx, w, h) => {
-  const gr = ctx.createLinearGradient(0, h, 0, 0);
-  gr.addColorStop(0, 'rgba(255,255,255,0.9)');
-  gr.addColorStop(0.35, 'rgba(255,255,255,0.35)');
-  gr.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = gr;
-  ctx.fillRect(0, 0, w, h);
-});
-
 /** Poster taped to a pillar or wall: a missing car, or later, a missing driver. */
 const missingTex = (eerie) => canvasTex(`g-missing:${eerie}`, 256, 360, (ctx, w, h) => {
   ctx.fillStyle = '#efeadc';
@@ -339,15 +330,16 @@ class Quads {
     this.idx = [];
   }
 
-  quad(pts, s) {
+  quad(pts, s, uvs = null) {
     const base = this.p.length / 3;
     const [a, b, , d] = pts;
     const n = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).cross(new THREE.Vector3(d[0] - a[0], d[1] - a[1], d[2] - a[2])).normalize();
-    for (const q of pts) {
+    pts.forEach((q, k) => {
       this.p.push(...q);
       this.n.push(n.x, n.y, n.z);
-      this.uv.push(q[0] / s, (n.y > 0 ? -q[2] : q[2]) / s);
-    }
+      if (uvs) this.uv.push(...uvs[k]);
+      else this.uv.push(q[0] / s, (n.y > 0 ? -q[2] : q[2]) / s);
+    });
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
@@ -384,6 +376,34 @@ function slopeGeos(g, cells, uv) {
   return [floor.build(), ceil.build()];
 }
 
+/** Painted hazard curbs along the walls of the car ramps (they follow the slope). */
+function curbGeo(g, cells) {
+  const q = new Quads();
+  const s = 0.7;
+  const hgt = 0.32;
+  for (const [i, j] of cells) {
+    const k = j * g.w + i;
+    const [, dy] = DIRS[g.ramp[k] - 1];
+    if (!dy) continue;
+    const base = g.hgt[k];
+    const rise = g.rise[k];
+    const z0 = j * CS;
+    const z1 = z0 + CS;
+    const h0 = base + (dy === 1 ? 0 : rise);
+    const h1 = base + (dy === 1 ? rise : 0);
+    const uv = (z, y) => [z / s, (y - h0) / s];
+    if (g.get(i - 1, j) === WALL) {
+      const x = i * CS + 0.012;
+      q.quad([[x, h1, z1], [x, h0, z0], [x, h0 + hgt, z0], [x, h1 + hgt, z1]], s, [uv(z1, h1), uv(z0, h0), uv(z0, h0 + hgt), uv(z1, h1 + hgt)]);
+    }
+    if (g.get(i + 1, j) === WALL) {
+      const x = (i + 1) * CS - 0.012;
+      q.quad([[x, h0, z0], [x, h1, z1], [x, h1 + hgt, z1], [x, h0 + hgt, z0]], s, [uv(z0, h0), uv(z1, h1), uv(z1, h1 + hgt), uv(z0, h0 + hgt)]);
+    }
+  }
+  return q.build();
+}
+
 /** Proper steps for the stairwell's steep flights. */
 function stairGeo(g, cells) {
   const geos = [];
@@ -411,7 +431,7 @@ function stairGeo(g, cells) {
 // ---------------------------------------------------------------------------
 // Cars
 
-const PAINTS = [[0xe9e9e6, 5], [0xf4f2ea, 2], [0x9ea3a8, 4], [0x676b70, 2], [0x121316, 4], [0x1c2a48, 2], [0x7a1418, 1.2], [0x2a3a30, 0.8], [0xb8a88a, 0.8], [0x4a2c20, 0.5]];
+const PAINTS = [[0xd6d6d2, 5], [0xdedcd4, 2], [0x9ea3a8, 4], [0x676b70, 2], [0x121316, 4], [0x1c2a48, 2], [0x7a1418, 1.2], [0x2a3a30, 0.8], [0xb8a88a, 0.8], [0x4a2c20, 0.5]];
 const PASTELS = [0xbfe3d2, 0xf2dcc0, 0xe9c9d6, 0xc9d8ef, 0xf0e6a8];
 
 function pickPaint(rng, kind) {
@@ -684,6 +704,41 @@ class CarPark {
   }
 }
 
+/**
+ * Headlight beam through dusty air: bright at the lamp, fading along the
+ * cone, and soft at the silhouette (so it reads as haze from any angle).
+ */
+function beamMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color(0, 0, 0) } },
+    vertexShader: /* glsl */ `
+      varying vec3 vN;
+      varying vec3 vP;
+      varying float vAlong;
+      void main() {
+        vAlong = uv.y;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vP = mv.xyz;
+        vN = normalMatrix * normal;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      varying vec3 vN;
+      varying vec3 vP;
+      varying float vAlong;
+      void main() {
+        float facing = abs(dot(normalize(vN), normalize(-vP)));
+        float a = pow(vAlong, 1.8) * pow(facing, 1.6) * exp(-length(vP) * 0.035);
+        gl_FragColor = vec4(uColor * a, 1.0);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // The driverless car. It creeps along the lanes toward you while you aren't
 // looking, stops the moment you look, and never comes closer than a car length.
@@ -694,7 +749,7 @@ class Creeper {
     this.drive = drive;
     this.wp = wp;
     this.presence = 0;
-    const car = carModel('sedan', 0x101113);
+    const car = carModel('sedan', 0x22252a);
     car.children[0].userData.noBake = true;
     this.car = car;
     this.rig = lightRig(car, car.userData.size);
@@ -702,7 +757,7 @@ class Creeper {
     this.object.rotation.order = 'YXZ';
     this.object.add(car);
     // headlight beams: additive cones through the fog, and pools on the floor
-    this.beamMat = new THREE.MeshBasicMaterial({ map: beamTex(), color: 0x000000, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    this.beamMat = beamMaterial();
     const [cw, cl] = car.userData.size;
     for (const sx of [-1, 1]) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5, 9, 20, 1, true).rotateX(-PI / 2).translate(0, 0, 4.5).rotateX(0.1), this.beamMat);
@@ -776,7 +831,7 @@ class Creeper {
     }
     if (prev[goal] === -1) return null;
     const out = [];
-    for (let c = goal; c !== s; c = prev[c]) out.push(this.wp(c % g.w, (c / g.w) | 0));
+    for (let c = goal; c !== s; c = prev[c]) out.push({ ...this.wp(c % g.w, (c / g.w) | 0), cell: [c % g.w, (c / g.w) | 0] });
     return out.reverse();
   }
 
@@ -806,6 +861,7 @@ class Creeper {
     o.position.set(c.x, w.floorAt(c.x, c.z), c.z);
     o.rotation.y = Math.atan2(path[0].x - c.x, path[0].z - c.z);
     this.path = path;
+    this.cell = [i, j];
     this.state = 'creep';
     this.t = 0;
     this.flashes = 0;
@@ -875,7 +931,8 @@ class Creeper {
         this.replan -= dt;
         if (this.replan <= 0) {
           this.replan = 1;
-          const from = this.cellNear(p.x, p.z);
+          // replan from the last lane cell reached, so it never dithers between two
+          const from = this.cell;
           const to = this.cellNear(player.pos.x, player.pos.z);
           if (from && to) this.path = this.route(from, to) || this.path;
         }
@@ -892,8 +949,8 @@ class Creeper {
     this.flash = Math.max(0, this.flash - dt);
     const beam = this.lights * (1 + (this.flash > 0 && this.flash % 0.45 > 0.2 ? 1.2 : 0));
     this.rig.set(beam, this.lights * 0.8, 0);
-    this.beamMat.color.setRGB(0.1, 0.095, 0.08).multiplyScalar(beam);
-    this.poolMat.color.setRGB(0.22, 0.2, 0.17).multiplyScalar(beam);
+    this.beamMat.uniforms.uColor.value.setRGB(0.16, 0.15, 0.13).multiplyScalar(beam);
+    this.poolMat.color.setRGB(0.15, 0.13, 0.095).multiplyScalar(beam);
     // pitch on the ramps
     const [, cl] = this.car.userData.size;
     const fx = Math.sin(o.rotation.y);
@@ -926,7 +983,7 @@ class Creeper {
       const dz = t.z - p.z;
       const d = Math.hypot(dx, dz);
       if (d < 0.3) {
-        this.path.shift();
+        this.cell = this.path.shift().cell;
         continue;
       }
       const yaw = Math.atan2(dx, dz);
@@ -1166,6 +1223,7 @@ export default {
     const [slopeF, slopeC] = slopeGeos(g, rampCells, 2);
     mesh(world, slopeF, floorMat);
     mesh(world, slopeC, ceilMat);
+    mesh(world, curbGeo(g, rampCells), new THREE.MeshStandardMaterial({ map: hazardTex(), roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -1 }));
     mesh(world, stairGeo(g, stairs), photo('concrete_wall_004', { uvScale: 1.5, color: 0x9c968c }));
     mesh(world, buildCellQuads(g, (c, i, j) => !solidish(c) && !isCarRamp(i, j), ceilAt, false, 2), ceilMat);
     const drops = buildRisers(g, { pred: (c, i, j) => !solidish(c) && !isCarRamp(i, j), ceil: ceilAt, uScale: 2, vScale: 2 });
@@ -1570,7 +1628,7 @@ export default {
     const payTex = signTexture('ATTENDANT', 'Pay here · 24 h', { bg: '#1f4a78', fg: '#fff', w: 512, h: 128 });
     const payMat = kit.mat('paysign', () => new THREE.MeshStandardMaterial({ map: payTex, emissiveMap: payTex, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.4 }));
     kit.box(booth, 1.3, 0.3, 0.1, frame, 0, 1.98, -BW / 2 - 0.07);
-    keep(kit.plane(booth, 1.24, 0.26, payMat, 0, 1.98, -BW / 2 - 0.121)).userData.noBake = true;
+    keep(kit.plane(booth, 1.24, 0.26, payMat, 0, 1.98, -BW / 2 - 0.121, 0, PI, 0)).userData.noBake = true;
     // window frames, a sliding pay hatch and a rubber mat
     for (const y of [0.97, 2.15]) kit.box(booth, BW + 0.02, 0.05, BW + 0.02, frame, 0, y, 0);
     kit.box(booth, 0.03, 1.2, 0.07, frame, 0, 1.55, -BW / 2);
@@ -1612,10 +1670,25 @@ export default {
     const tm = new THREE.Group();
     kit.box(tm, 0.5, 1.25, 0.42, kit.std(0x2e5a8a, 0.4, 0.4), 0, 0.625, 0);
     kit.box(tm, 0.52, 0.06, 0.44, frame, 0, 1.28, 0);
-    kit.plane(tm, 0.36, 0.2, kit.tex('g-ticket', signTexture('TICKET', 'Press the button', { bg: '#0e1a24', fg: '#9fe0ff', w: 256, h: 128 }), { emissive: 0xffffff, emissiveIntensity: 0.8 }), 0, 1.02, 0.212);
+    const tkt = signTexture('TICKET', 'Press the button', { bg: '#0e1a24', fg: '#9fe0ff', w: 256, h: 128 });
+    kit.plane(tm, 0.36, 0.2, kit.tex('g-ticket', tkt, { emissiveMap: tkt, emissive: 0xffffff, emissiveIntensity: 0.8 }), 0, 1.02, 0.212);
     keep(kit.sphere(tm, 0.035, kit.glow(0x40ff80, 2), 0.12, 0.78, 0.21));
     kit.box(tm, 0.16, 0.02, 0.03, M.dark, -0.06, 0.72, 0.22);
     kit.add(tm, 44.2 * CS, 2.35 * CS, 0, { collide: [0.5, 0.45] });
+    const TICKETS = [
+      ['(Beep. A ticket slides out.)', '(ENTERED: 03:00. The clock on the machine also says 03:00.)'],
+      ['(Beep. Another ticket. ENTERED: 03:00.)', '(You have now entered twice, without leaving once.)'],
+      ['(Beep. A ticket. On the back, in pencil: “P6”.)'],
+      ['(The machine is out of tickets. The little screen says PLEASE WAIT.)', '(You wait. It is 03:00.)'],
+    ];
+    let tickets = 0;
+    world.interactables.push({
+      pos: new THREE.Vector3(44.2 * CS, 0, 2.35 * CS + 0.2), aimHeight: 0.9, interactRange: 2.2, prompt: 'Press the button',
+      interact: (game) => {
+        game.audio.beep(null, 1.1, 1);
+        game.openDialog('the ticket machine', TICKETS[Math.min(tickets++, TICKETS.length - 1)], 1.3);
+      },
+    });
     // availability board on the entrance wall
     const board = new THREE.Group();
     kit.box(board, 1.3, 0.72, 0.1, frame, 0, 0, 0.05);
@@ -1715,10 +1788,28 @@ export default {
     plate('P7', 'Parking level', 32.5 * CS, P7 + 1.7, 21 * CS + 0.02, 0, '#1f5a8a', '#fff');
     // P5: full, apparently
     const p5 = new THREE.Group();
-    kit.plane(p5, 2.4, 0.9, kit.tex('g-p5', signTexture('P5 FULL', 'Also P4, P3, P2 and P1. Please park on P6.', { bg: '#141414', fg: '#ff5a30', w: 1024, h: 384 }), { emissive: 0xffffff, emissiveIntensity: 0.5 }), 0, 0, 0);
+    const p5t = signTexture('P5 FULL', 'Also P4, P3, P2 and P1. Please park on P6.', { bg: '#141414', fg: '#ff5a30', w: 1024, h: 384 });
+    kit.plane(p5, 2.4, 0.9, kit.tex('g-p5', p5t, { emissiveMap: p5t, emissive: 0xffffff, emissiveIntensity: 0.7 }), 0, 0, 0);
     kit.add(p5, 42 * CS, 21 * CS - 0.03, PI, { y: 1.35 + 1.6 });
     for (const x of [41.5, 42.5]) kit.add(Mdl.barrier.build(kit, rng), x * CS, 20.7 * CS, PI, { y: 1.35, collide: Mdl.barrier.fp });
     for (let k = 0; k < 3; k++) kit.add(P.trafficCone.build(kit, rng), (41.2 + k * 0.6) * CS, 20.1 * CS, 0, { y: 1.35 });
+
+    // convex safety mirrors where the lanes meet the end walls
+    const mirrorMat = kit.mat('mirror', () => new THREE.MeshStandardMaterial({ color: 0xd8dde0, metalness: 1, roughness: 0.04 }));
+    const rimMat = kit.std(0xe06a1c, 0.5, 0.1);
+    for (const L of LANES) {
+      for (const [x, face] of [[1 * CS, 1], [43 * CS, -1]]) {
+        if (face < 0 && L === 3) continue; // the entrance is there
+        const m = new THREE.Group();
+        const tilt = new THREE.Group();
+        tilt.rotation.x = 0.25;
+        m.add(tilt);
+        kit.mesh(tilt, new THREE.SphereGeometry(0.6, 24, 8, 0, PI * 2, 0, 0.5), mirrorMat, 0, 0, -0.447, PI / 2, 0, 0);
+        kit.torus(tilt, 0.288, 0.025, rimMat, 0, 0, 0.08);
+        kit.box(m, 0.05, 0.05, 0.22, M.steel, 0, 0.05, -0.1);
+        kit.add(m, x + face * 0.2, (L + 1) * CS + face * 1.4, face > 0 ? PI / 2 - 0.5 : -PI / 2 - 0.5, { y: deckY(2, L) + 2.05 });
+      }
+    }
 
     // ---- signs --------------------------------------------------------------
     const hang = (text, sub, x, y, z, yaw, bg = '#1f6b3a') => {
@@ -1996,7 +2087,7 @@ export default {
       knob: 0xb8b8b0,
       extras(group) {
         const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.16), new THREE.MeshBasicMaterial({ map: signTexture('STAIRS', '', { bg: '#e8e6de', fg: '#1a1a1a', w: 256, h: 80 }) }));
-        plate.position.set(0.02, 1.62, 0.1);
+        plate.position.set(0.85, 1.55, 0.015);
         const exit = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.19), new THREE.MeshBasicMaterial({ map: exitSign(), color: new THREE.Color(1.6, 1.6, 1.6) }));
         exit.position.set(0, 2.4, 0.06);
         group.add(plate, exit);
