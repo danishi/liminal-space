@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL, VOID, HOLE, buildWallFaces, buildCellQuads, buildFloors, buildRisers, buildStairs } from '../core/grid.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { checkerPastel, plaster, pbr } from '../core/surfaces.js';
+import { checkerPastel, pbr } from '../core/surfaces.js';
 import { cloudSprite, glowSprite } from '../core/textures.js';
 import { mesh, doorModel, glow, decorate, stairRun } from './common.js';
 import { PropKit } from '../props/kit.js';
+import { photo } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { NPC } from '../entities/npc.js';
 import { Watcher } from '../entities/creatures.js';
@@ -79,6 +80,7 @@ export default {
   name: 'Pastel Dreamscape',
   sub: 'Cotton-candy sky',
   tint: 0xffd6ee,
+  assets: { textures: ['beige_wall_001'], models: ['rubber_duck_toy'] },
 
   build(world) {
     const rng = world.rng;
@@ -132,8 +134,8 @@ export default {
 
     const grey = Math.min(1, Math.max(0, world.depth * 0.15));
     const palette = COLORS.map((c, k) => new THREE.Color(c).lerp(new THREE.Color(GREYS[k]), grey).getHex());
-    const plasterSet = plaster();
-    const wallMats = palette.map((color) => pbr(plasterSet, { color, normalScale: 0.6 }));
+    // real plaster, painted in pastel
+    const wallMats = palette.map((color) => photo('beige_wall_001', { uvScale: 3, color: new THREE.Color(color).multiplyScalar(1.45), normalScale: 0.6 }));
     const floorMat = pbr(checkerPastel(), { color: new THREE.Color(1, 1, 1).lerp(new THREE.Color(0.8, 0.8, 0.8), grey) });
     const baseOf = (i, j) => g.heightOf(i, j);
     // walls: coloured partitions, base follows the floor next to them
@@ -233,7 +235,7 @@ export default {
         { p: P.toyBlock, w: 1.5 }, { p: P.gumball, w: 0.8 },
       ],
       clutter: [
-        { p: P.balloon, w: 3, max: 0.9 }, { p: P.teddy, w: 2 }, { p: P.balloon, w: 2, min: 0.9, o: { grey: true } }, { p: P.teddy, w: 2, min: 0.8, o: { grey: true, eerie: true } },
+        { p: P.balloon, w: 3, max: 0.9 }, { p: P.teddy, w: 2 }, { p: P.modelProp('rubber_duck_toy', { collide: false, jitter: 3, scale: 1.4 }), w: 1.5 }, { p: P.balloon, w: 2, min: 0.9, o: { grey: true } }, { p: P.teddy, w: 2, min: 0.8, o: { grey: true, eerie: true } },
         { p: P.toyBlock, w: 1, min: 0.7, o: { grey: true } },
       ],
     });
@@ -250,6 +252,7 @@ export default {
       ambience: 'dream',
       reverb: [2.4, 3],
       shadows: true,
+      bake: { hemi: 1, dynamic: 1, bounce: 0, ao: 0.8 },
     });
     world.surfaceFn = () => 'soft';
 

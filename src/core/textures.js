@@ -314,3 +314,28 @@ export function sunPatch() {
     ctx.fillRect(0, 0, w, h);
   }, { repeat: false });
 }
+
+/** Window frame mask for windowViewMaterial: opaque wall/frames, transparent glass. */
+export function schoolWindowFrame() {
+  return tex('school-window-frame', 512, 512, (ctx, w, h) => {
+    ctx.clearRect(0, 0, w, h);
+    const wall = '#e4dcc8';
+    const frame = '#bfc1bc';
+    // canvas top = top of the wall
+    ctx.fillStyle = wall;
+    ctx.fillRect(0, 0, w, h * 0.1);
+    ctx.fillStyle = '#6f8f76';
+    ctx.fillRect(0, h * 0.66, w, h * 0.34);
+    ctx.fillStyle = '#56705c';
+    ctx.fillRect(0, h * 0.66, w, 8);
+    ctx.fillStyle = frame;
+    ctx.fillRect(0, h * 0.1, w, 12);
+    ctx.fillRect(0, h * 0.64, w, h * 0.03);
+    ctx.fillRect(0, h * 0.38, w, 9);
+    for (const x of [0, w / 2 - 6, w - 12]) ctx.fillRect(x, h * 0.1, 12, h * 0.56);
+    // thin shadow lines so the frames read as extruded
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(0, h * 0.1 + 12, w, 2);
+    ctx.fillRect(0, h * 0.38 + 9, w, 2);
+  });
+}

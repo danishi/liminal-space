@@ -71,7 +71,9 @@ const TapeShader = {
 export class PostFX {
   constructor(renderer, scene, camera) {
     this.renderer = renderer;
-    this.composer = new EffectComposer(renderer);
+    // MSAA on the main render target keeps edges clean without a blur pass
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    this.composer = new EffectComposer(renderer, rt);
     this.renderPass = new RenderPass(scene, camera);
     this.gtao = new GTAOPass(scene, camera, 512, 512);
     this.gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
@@ -96,6 +98,15 @@ export class PostFX {
     this.gtao.camera = camera;
   }
 
+  setSamples(n) {
+    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+      if (rt.samples !== n) {
+        rt.samples = n;
+        rt.dispose();
+      }
+    }
+  }
+
   setSize(w, h, pr) {
     this.composer.setPixelRatio(pr);
     this.composer.setSize(w, h);
@@ -110,7 +121,8 @@ export class PostFX {
     this.bloom.strength = bloom;
     this.bloom.threshold = bloomThreshold;
     this.bloom.radius = bloomRadius;
-    this.base = { grain, vignette, chroma, scan };
+    // keep the camcorder feel subtle: realism first
+    this.base = { grain: grain * 0.6, vignette: vignette * 0.8, chroma: chroma * 0.6, scan: scan * 0.2 };
     this.u.uTint.value.setRGB(...tint);
     this.apply();
   }

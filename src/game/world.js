@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
 import { wallMounts, WATER, HOLE, DIRS } from '../core/grid.js';
 import { DriftDoor } from '../entities/door.js';
+import { bakeWorld } from '../core/bake.js';
 
 const STEP_UP = 0.55;
 
@@ -54,6 +55,8 @@ export class World {
     this.surfaceFn = null;
     this.onUpdate = null;
     this.onDispose = [];
+    this.bakeSources = [];
+    this.bakeUniforms = null;
     this.distFromSpawn = null;
     this.maxDist = 1;
     // levels last a few minutes, a little shorter the deeper you drift
@@ -63,6 +66,20 @@ export class World {
     stage.build(this);
     if (!this.distFromSpawn) this.finalizeLayout();
     if (!attract) this.placeDoors(stage.doorCount ?? 2);
+    if (this.env.bake !== false) this.bake();
+  }
+
+  /** Bakes fixture light and ambient occlusion into the level's geometry. */
+  bake() {
+    const b = { hemi: 0.5, dynamic: 0.55, bounce: 0.3, ao: 1, radius: 11, ...(this.env.bake || {}) };
+    this.bakeUniforms = bakeWorld(this, this.bakeSources, b);
+    this.root.traverse((o) => {
+      if (o.isHemisphereLight) o.intensity *= b.hemi;
+    });
+    if (this.lightPool) {
+      this.lightPool.baseIntensity *= b.dynamic;
+      for (const f of this.lightPool.fixtures) if (f.intensity !== undefined) f.intensity *= b.dynamic;
+    }
   }
 
   /** Call after carving the grid: seals pockets and computes distances. */
@@ -277,6 +294,7 @@ export class World {
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
+          if (m.userData.shared) continue;
           for (const key of ['map', 'emissiveMap', 'alphaMap', 'normalMap', 'roughnessMap']) {
             const t = m[key];
             if (t && !t.userData.cached) t.dispose();

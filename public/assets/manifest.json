@@ -1,0 +1,130 @@
+{
+  "textures": {
+    "dirty_carpet": {
+      "size": [
+        0.5999999046325684,
+        0.5999999046325684
+      ]
+    },
+    "decrepit_wallpaper": {
+      "size": [
+        2.5,
+        2.5
+      ]
+    },
+    "long_white_tiles": {
+      "size": [
+        1.2699999809265137,
+        1.2699999809265137
+      ]
+    },
+    "linoleum_brown": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "beige_wall_001": {
+      "size": [
+        3,
+        3.000000238418579
+      ]
+    },
+    "painted_concrete": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "concrete_floor_02": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "bamboo_wall": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "stone_pathway_02": {
+      "size": [
+        1.9500000476837158,
+        1.9500000476837158
+      ]
+    },
+    "clean_pebbles": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "dark_paneled_wood": {
+      "size": [
+        1.4000000953674316,
+        1.4000000953674316
+      ]
+    },
+    "gravel": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "ceiling_interior": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "brown_planks_03": {
+      "size": [
+        1,
+        1
+      ]
+    }
+  },
+  "models": [
+    "cardboard_box_01",
+    "WetFloorSign_01",
+    "metal_office_desk",
+    "plastic_monobloc_chair_01",
+    "metal_trash_can",
+    "drawer_cabinet",
+    "korean_fire_extinguisher_01",
+    "Television_01",
+    "ladder_sectioned_01",
+    "fire_alarm",
+    "rubber_duck_toy",
+    "lifebuoy",
+    "potted_plant_02",
+    "SchoolDesk_01",
+    "SchoolChair_01",
+    "wall_clock",
+    "plastic_broom",
+    "korean_public_payphone_01",
+    "security_camera_01",
+    "utility_box_01",
+    "trashbag",
+    "vintage_suitcase",
+    "wooden_lantern_01",
+    "rock_moss_set_01",
+    "fern_02",
+    "wooden_bucket_01",
+    "ArmChair_01",
+    "Sofa_01",
+    "CoffeeCart_01",
+    "Chandelier_02",
+    "ClassicNightstand_01",
+    "fancy_picture_frame_01",
+    "ornate_mirror_01",
+    "vintage_grandfather_clock_01",
+    "antique_ceramic_vase_01"
+  ],
+  "hdris": [
+    "qwantani_night_puresky",
+    "stuttgart_suburbs"
+  ],
+  "source": "Poly Haven (https://polyhaven.com), CC0 1.0"
+}

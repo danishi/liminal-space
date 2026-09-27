@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL, DOORWAY, HOLE, buildWallFaces, buildCellQuads, wallMounts } from '../core/grid.js';
-import { schoolWallPaint, linoleumFloor, paint, pbr } from '../core/surfaces.js';
-import { schoolWindow, chalkboard, sunPatch, glowSprite, labelTexture } from '../core/textures.js';
-import { mesh, buildShell, ceilingFixtures, doorModel, decorate, stairRun } from './common.js';
+import { paint, pbr } from '../core/surfaces.js';
+import { chalkboard, sunPatch, glowSprite, labelTexture, schoolWindowFrame } from '../core/textures.js';
+import { mesh, buildShell, ceilingFixtures, doorModel, decorate, stairRun, windowViewMaterial } from './common.js';
+import { photo, hdri } from '../core/assets.js';
 import { PropKit } from '../props/kit.js';
 import * as P from '../props/library.js';
 import { Watcher } from '../entities/creatures.js';
@@ -41,23 +42,12 @@ function studentModel() {
 }
 
 const deskSet = {
-  place: 'floor', fp: [0.64, 0.46],
+  place: 'floor', fp: [0.55, 0.71],
   build(k, rng) {
+    // scanned desk and chair, both facing the blackboard (-X)
     const g = new THREE.Group();
-    const top = k.mat('deskTop', () => new THREE.MeshStandardMaterial({ color: 0xc89b62, roughness: 0.45 }));
-    const metal = k.std(0x5d6a63, 0.45, 0.6);
-    k.box(g, 0.64, 0.035, 0.46, top, 0, 0.72, 0);
-    k.box(g, 0.6, 0.12, 0.4, metal, 0, 0.64, -0.01);
-    for (const [x, z] of [[-0.28, -0.19], [0.28, -0.19], [-0.28, 0.19], [0.28, 0.19]]) k.box(g, 0.03, 0.7, 0.03, metal, x, 0.35, z);
-    const cz = 0.5 + rng.float(0, 0.15);
-    const cr = rng.float(-0.25, 0.25);
-    const chair = new THREE.Group();
-    k.box(chair, 0.4, 0.035, 0.38, top, 0, 0.42, 0);
-    k.box(chair, 0.4, 0.28, 0.03, top, 0, 0.64, 0.18);
-    for (const [x, z] of [[-0.17, -0.16], [0.17, -0.16], [-0.17, 0.16], [0.17, 0.16]]) k.box(chair, 0.025, 0.42, 0.025, metal, x, 0.21, z);
-    chair.position.set(rng.float(-0.05, 0.05), 0, cz);
-    chair.rotation.y = cr;
-    g.add(chair);
+    k.model(g, 'SchoolDesk_01', 0, 0, 0, -Math.PI / 2);
+    k.model(g, 'SchoolChair_01', 0.55 + rng.float(0, 0.12), 0, rng.float(-0.05, 0.05), -Math.PI / 2 + rng.float(-0.25, 0.25));
     return g;
   },
 };
@@ -68,6 +58,11 @@ export default {
   name: 'After-School Hallways',
   sub: '黄昏の校舎 · A school in Japan at dusk',
   tint: 0xffc890,
+  assets: {
+    textures: ['linoleum_brown', 'beige_wall_001', 'painted_concrete', 'ceiling_interior'],
+    models: ['SchoolDesk_01', 'SchoolChair_01', 'wall_clock', 'plastic_broom', 'metal_trash_can', 'fire_alarm'],
+    hdris: ['stuttgart_suburbs'],
+  },
 
   build(world) {
     const rng = world.rng;
@@ -120,18 +115,24 @@ export default {
     for (const [i, j] of holes) g.set(i, j, HOLE);
 
     const outer = (i, j) => j <= 2 || j >= HH - 3 || i <= 1 || i >= W - 2;
-    const wallMat = pbr(schoolWallPaint(), { normalScale: 0.5 });
-    const winTex = schoolWindow();
-    const winMat = new THREE.MeshStandardMaterial({ map: winTex, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.95, roughness: 0.25 });
-    const floorMat = pbr(linoleumFloor(), { normalScale: 0.6 });
+    // scanned plaster above worn green paint, like a real Japanese school corridor
+    const wallMat = photo('beige_wall_001', { uvScale: [cs, H], color: 0xf4ecdc });
+    const lowerMat = photo('painted_concrete', { uvScale: 2, color: new THREE.Color(1.05, 1.2, 1.05) });
+    const railMat = pbr(paint('s-school-rail', [70, 92, 76], { rough: 0.4 }));
+    const winMat = windowViewMaterial(hdri('stuttgart_suburbs'), schoolWindowFrame(), { exposure: 1.1, rotation: rng.float(0, Math.PI * 2) });
+    const floorMat = photo('linoleum_brown', { uvScale: 2.4, roughness: 0.75 });
     buildShell(world, {
       height: H,
       ceil: (i, j) => g.heightOf(i, j) + (g.ramp[j * W + i] ? g.rise[j * W + i] : 0) + H,
       wall: { mat: wallMat, u: cs, v: H },
       floor: { mat: floorMat, uv: 2.4 },
-      ceilMat: { mat: pbr(paint('s-school-ceil', [222, 214, 196], { rough: 0.9 })), uv: 3 },
-      stairs: pbr(paint('s-school-stair', [150, 146, 136], { rough: 0.6 })),
+      ceilMat: { mat: photo('ceiling_interior', { uvScale: 3, color: 0xf2eee4 }), uv: 3 },
+      stairs: photo('painted_concrete', { uvScale: 2, color: 0x9a9a94 }),
       riserMat: wallMat,
+      trims: [
+        { mat: lowerMat, y0: 0, y1: 1.1, inset: 0.012, u: 2, v: 2 },
+        { mat: railMat, y0: 1.08, y1: 1.14, inset: 0.025 },
+      ],
     });
     // outer walls are windows: rebuild those faces with the window material slightly in front
     mesh(world, buildWallFaces(g, { y0: (i, j) => g.heightOf(i, j), y1: (i, j) => g.heightOf(i, j) + H, uScale: cs, vScale: H, inset: 0.01, solid: (c, i, j) => c === WALL && outer(i, j) }), winMat);
@@ -140,7 +141,10 @@ export default {
 
     // sunlight through the windows onto the floor
     const patchMat = new THREE.MeshBasicMaterial({ map: sunPatch(), color: 0xffa860, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending });
+    const warm = new THREE.Color(1, 0.68, 0.42);
     for (const m of wallMounts(g).filter((mm) => outer(mm.i - mm.nx, mm.j - mm.nz))) {
+      // each window pane lights the corridor (baked; dims with the sunset)
+      world.bakeSources.push({ pos: new THREE.Vector3(m.x + m.nx * 0.3, m.y + 1.7, m.z + m.nz * 0.3), color: warm, intensity: 5, dir: new THREE.Vector3(m.nx, -0.25, m.nz).normalize() });
       const p = new THREE.Mesh(new THREE.PlaneGeometry(cs * 0.95, 2.6), patchMat);
       p.rotation.x = -Math.PI / 2;
       const grp = new THREE.Group();
@@ -171,7 +175,7 @@ export default {
           const jit = rng.float(-0.08, 0.08);
           const grp = deskSet.build(kit, rng);
           const messy = u > 0.7 && rng.chance(0.3);
-          kit.add(grp, x + jit, z, messy ? rng.float(0, Math.PI * 2) : rng.float(-0.06, 0.06), { y: r.h, collide: [0.64, 0.46], rz: messy && rng.chance(0.3) ? Math.PI / 2 : 0 });
+          kit.add(grp, x + jit, z, messy ? rng.float(0, Math.PI * 2) : rng.float(-0.06, 0.06), { y: r.h, collide: [0.55, 0.71], rz: messy && rng.chance(0.3) ? Math.PI / 2 : 0 });
         }
       }
     });
@@ -180,10 +184,12 @@ export default {
       keepClear: (i, j) => g.ramp[j * W + i] > 0,
       wall: [
         { p: P.shoeCubbies, w: 1.5 }, { p: P.trashBins, w: 1.5 }, { p: P.waterFountain, w: 1 }, { p: P.hydrantBox, w: 1 },
+        { p: P.modelProp('metal_trash_can', { scale: 0.8 }), w: 1 }, { p: P.modelProp('plastic_broom', { jitter: 0.4 }), w: 1 },
         { p: P.lockers, w: 1, o: { color: 0x8a9a92 } }, { p: P.lockers, w: 1, min: 0.7, o: { color: 0x8a9a92, eerie: true } },
       ],
       high: [
-        { p: P.bulletinBoard, w: 2 }, { p: P.poster, w: 1.5 }, { p: P.wallClock, w: 1 }, { p: P.wallClock, w: 1, min: 0.7, o: { eerie: true } },
+        { p: P.bulletinBoard, w: 2 }, { p: P.poster, w: 1.5 }, { p: P.modelProp('wall_clock', { place: 'high', y: 2.3, collide: false }), w: 1.2 },
+        { p: P.wallClock, w: 0.6 }, { p: P.wallClock, w: 1, min: 0.7, o: { eerie: true } }, { p: P.modelProp('fire_alarm', { place: 'high', y: 1.45, collide: false }), w: 0.8 },
         { p: P.handprints, w: 1, min: 0.85 },
       ],
       floor: [{ p: P.tvCart, w: 1 }, { p: P.deskBarricade, w: 2, min: 0.55 }],
@@ -228,6 +234,7 @@ export default {
       envIntensity: 0.55,
       ambience: 'school',
       reverb: [2.2, 3],
+      bake: { hemi: 0.6, bounce: 0.4 },
     });
     world.surfaceFn = () => 'wood';
 
@@ -238,7 +245,6 @@ export default {
     const nightHemi = new THREE.Color(0x46507a);
     const dayGround = new THREE.Color(0x9a7460);
     const nightGround = new THREE.Color(0x1c1a26);
-    const nightWin = new THREE.Color(0.18, 0.2, 0.42);
     const start = Math.min(0.85, world.depth * 0.15);
     let t = world.attract ? DUSK * 0.15 : DUSK * start;
     let night = false;
@@ -253,7 +259,9 @@ export default {
       hemi.groundColor.copy(dayGround).lerp(nightGround, e);
       hemi.intensity = 0.9 - e * 0.62;
       sun.intensity = 1.2 * (1 - e);
-      winMat.emissive.setRGB(1, 1, 1).lerp(nightWin, e);
+      winMat.uniforms.uExposure.value = 1.1 * (1 - e * 0.9);
+      winMat.uniforms.uFrameLight.value = 0.95 * (1 - e * 0.75);
+      if (world.bakeUniforms) world.bakeUniforms.scale.value = 1 - e * 0.92;
       patchMat.opacity = 0.55 * (1 - e);
       dustMat.opacity = 0.8 * (1 - e * 0.8);
       const cam = ctx.camera.position;

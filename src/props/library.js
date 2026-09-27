@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { keep } from './kit.js';
 import { posterTexture, paintingTexture, vendingTexture, clockFace, emaTexture, bulletinTexture, mapBoard, signTexture, screenStatic } from './canvas.js';
 import { woodPanel, pbr, paint } from '../core/surfaces.js';
+import { modelSize } from '../core/assets.js';
 
 // Every builder returns a THREE.Group with its origin on the floor at the
 // centre of its footprint and its front facing +Z. `fp` is the collision
@@ -15,6 +16,29 @@ import { woodPanel, pbr, paint } from '../core/surfaces.js';
 
 const G = () => new THREE.Group();
 const PI = Math.PI;
+
+// ---------------------------------------------------------------------------
+// Photo-scanned models (Poly Haven, CC0). Footprints come from the model's
+// bounds once it's loaded; models face +Z like every other prop.
+
+export function modelProp(id, { place = 'wall', y, scale = 1, collide = true, yaw = 0, jitter = 0, scaleJitter = 0 } = {}) {
+  return {
+    id,
+    place,
+    y,
+    get fp() {
+      if (!collide) return null;
+      const s = modelSize(id);
+      return [s.x * scale, s.z * scale];
+    },
+    build(k, rng) {
+      const g = G();
+      const sc = scale * (1 + (scaleJitter ? rng.float(-scaleJitter, scaleJitter) : 0));
+      k.model(g, id, 0, 0, 0, yaw + (jitter ? rng.float(-jitter, jitter) : 0), sc);
+      return g;
+    },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Office / Backrooms

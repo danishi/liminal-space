@@ -16,6 +16,7 @@ let rectReady = false;
 export class LightPool {
   constructor(parent, count, { type = 'point', color = 0xffffff, intensity = 6, distance = 9, decay = 1.6, width = 1.2, height = 0.6 } = {}) {
     this.type = type;
+    this.rectArea = width * height;
     this.lights = [];
     this.fixtures = [];
     this.baseIntensity = intensity;

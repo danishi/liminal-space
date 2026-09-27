@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL } from '../core/grid.js';
-import { subwayTiles, terrazzo, concrete, tactile, paint, pbr } from '../core/surfaces.js';
+import { subwayTiles, terrazzo, tactile, paint, pbr } from '../core/surfaces.js';
 import { mesh, buildShell, ceilingFixtures, doorModel, decorate } from './common.js';
 import { buildCellQuads, worldPlane } from '../core/grid.js';
 import { PropKit, keep } from '../props/kit.js';
+import { photo } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { signTexture } from '../props/canvas.js';
 import { Watcher, Follower } from '../entities/creatures.js';
@@ -84,6 +85,10 @@ export default {
   name: 'Last-Train Underpass',
   sub: '終電後の地下通路 · A station in Japan after the last train',
   tint: 0xe8fff0,
+  assets: {
+    textures: ['long_white_tiles', 'concrete_floor_02', 'gravel'],
+    models: ['korean_public_payphone_01', 'security_camera_01', 'utility_box_01', 'trashbag', 'vintage_suitcase', 'metal_trash_can', 'WetFloorSign_01'],
+  },
 
   build(world) {
     const rng = world.rng;
@@ -131,9 +136,12 @@ export default {
     g.heightRect(2, 26, W - 3, 28, TRACK);
 
     const lineColor = rng.pick([[40, 120, 70], [200, 60, 40], [240, 160, 30], [40, 90, 180]]);
-    const wallMat = pbr(subwayTiles(lineColor), { normalScale: 0.6 });
+    // white glazed wall tiles (uvScale below the UV scale enlarges them) with a band in the line colour;
+    // polished terrazzo floor
+    const wallMat = photo('long_white_tiles', { uvScale: 1.4, roughness: 0.35, color: new THREE.Color(1.08, 1.08, 1.06) });
+    const bandMat = photo('long_white_tiles', { uvScale: 1.2, roughness: 0.5, color: new THREE.Color(lineColor[0] / 160, lineColor[1] / 160, lineColor[2] / 160) });
     const floorMat = pbr(terrazzo(), { normalScale: 0.4 });
-    const concreteMat = pbr(concrete('s-station-concrete', [110, 108, 104]));
+    const concreteMat = photo('concrete_floor_02', { uvScale: 2, color: 0xb8b6b0 });
     const ceilMat = pbr(paint('s-station-ceil', [196, 198, 196], { rough: 0.6 }));
     buildShell(world, {
       height: H,
@@ -142,11 +150,12 @@ export default {
       floor: { mat: floorMat, uv: 3 },
       floorPred: (c, i, j) => j < 26,
       ceilMat: { mat: ceilMat, uv: 2 },
-      stairs: pbr(paint('s-station-stairs', [150, 150, 146], { rough: 0.5 })),
+      stairs: concreteMat,
       riserMat: concreteMat,
+      trims: [{ mat: bandMat, y0: 1.25, y1: 1.5, inset: 0.01, u: 1.2, v: 1.2 }],
     });
     // track bed: ballast and rails
-    mesh(world, buildCellQuads(g, (c, i, j) => j >= 26 && j <= 28 && c === FLOOR, TRACK, true, 3), pbr(concrete('s-ballast', [70, 66, 60])));
+    mesh(world, buildCellQuads(g, (c, i, j) => j >= 26 && j <= 28 && c === FLOOR, TRACK, true, 3), photo('gravel', { uvScale: 3, color: 0x9a948a }));
     const kit = new PropKit(world);
     const steel = kit.std(0x8a8a88, 0.25, 0.95);
     const sleeper = kit.std(0x4a4640, 0.9);
@@ -186,10 +195,18 @@ export default {
       keepClear: (i, j) => j >= 26 || g.ramp[j * W + i] > 0 || (i >= 3 && i <= 5 && j >= 8 && j <= 9),
       wall: [
         { p: P.vendingMachine, w: 3 }, { p: P.bench, w: 2 }, { p: P.trashBins, w: 1.5, o: { station: true } }, { p: P.ticketMachine, w: 1 },
+        { p: P.modelProp('utility_box_01'), w: 1 }, { p: P.modelProp('metal_trash_can', { scale: 0.85 }), w: 1 },
         { p: P.lockers, w: 1, o: { color: 0xd4d4cc } }, { p: P.hydrantBox, w: 0.8 },
       ],
-      high: [{ p: P.stationMap, w: 1 }, { p: P.pillarAd, w: 2 }, { p: P.cctv, w: 1.2 }, { p: P.poster, w: 1 }, { p: P.wallClock, w: 0.6 }],
-      clutter: [{ p: P.umbrella, w: 1 }, { p: P.lostShoe, w: 1, min: 0.3 }, { p: P.puddle, w: 1.5, min: 0.35 }, { p: P.paperScatter, w: 1 }, { p: P.bottles, w: 1 }],
+      high: [
+        { p: P.stationMap, w: 1 }, { p: P.pillarAd, w: 2 }, { p: P.modelProp('security_camera_01', { place: 'high', y: 2.35, collide: false }), w: 1.2 },
+        { p: P.modelProp('korean_public_payphone_01', { place: 'high', y: 0.9, collide: false }), w: 1.2 }, { p: P.poster, w: 1 }, { p: P.wallClock, w: 0.6 },
+      ],
+      floor: [{ p: P.modelProp('WetFloorSign_01', { jitter: 3 }), w: 1 }],
+      clutter: [
+        { p: P.umbrella, w: 1 }, { p: P.lostShoe, w: 1, min: 0.3 }, { p: P.puddle, w: 1.5, min: 0.35 }, { p: P.paperScatter, w: 1 }, { p: P.bottles, w: 1 },
+        { p: P.modelProp('trashbag', { jitter: 3 }), w: 1, min: 0.25 }, { p: P.modelProp('vintage_suitcase', { jitter: 3, scale: 0.8 }), w: 0.8, min: 0.4 },
+      ],
       ceil: [{ p: P.hangingWires, w: 1, min: 0.6 }],
     });
     kit.finish();
