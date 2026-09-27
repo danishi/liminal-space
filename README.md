@@ -5,8 +5,13 @@ There is nothing to win. You drift from one empty place to the next.
 
 **Play:** https://danishi.github.io/liminal-space/
 
-No image or audio files are shipped: every texture is painted on a canvas at load time (including
-PBR normal and roughness maps), and every sound is synthesised with the Web Audio API.
+[![Liminal Drift highlight reel](public/media/highlight.gif)](https://danishi.github.io/liminal-space/media/highlight.mp4)
+
+▶ **Highlight reel** (38 s, 1280×720, with sound): [watch on GitHub Pages](https://danishi.github.io/liminal-space/media/highlight.mp4)
+· [public/media/highlight.mp4](public/media/highlight.mp4)
+
+Characters are sculpted in code, signs and posters are painted on canvas, every sound is synthesised
+with the Web Audio API, and the photo-scanned textures and models are CC0 assets from Poly Haven.
 
 ## How it works
 
