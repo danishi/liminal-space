@@ -1,21 +1,38 @@
 import * as THREE from 'three';
+import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
+
+let rectReady = false;
 
 /**
- * Many light fixtures, few real lights: a fixed pool of PointLights is moved
- * to the fixtures nearest the camera. Fixtures can flicker or be dead, and a
- * "disturbance" (e.g. a creature) makes nearby fixtures stutter.
+ * Many light fixtures, few real lights: a fixed pool of lights is moved to
+ * the fixtures nearest the camera. Fixtures can flicker or be dead, and a
+ * "disturbance" makes nearby fixtures stutter.
+ *
+ * type 'point' uses PointLights; 'rect' uses downward RectAreaLights sized
+ * like the fixture (soft, physically shaped fluorescent panels).
  *
  * fixture: { pos: Vector3, color?, intensity?, flicker: 0..1, dead: bool, instance?: index }
  */
 export class LightPool {
-  constructor(scene, count, { color = 0xffffff, intensity = 6, distance = 9, decay = 1.6 } = {}) {
+  constructor(parent, count, { type = 'point', color = 0xffffff, intensity = 6, distance = 9, decay = 1.6, width = 1.2, height = 0.6 } = {}) {
+    this.type = type;
     this.lights = [];
     this.fixtures = [];
     this.baseIntensity = intensity;
+    if (type === 'rect' && !rectReady) {
+      RectAreaLightUniformsLib.init();
+      rectReady = true;
+    }
     for (let i = 0; i < count; i++) {
-      const l = new THREE.PointLight(color, 0, distance, decay);
+      let l;
+      if (type === 'rect') {
+        l = new THREE.RectAreaLight(color, 0, width, height);
+        l.rotation.x = -Math.PI / 2;
+      } else {
+        l = new THREE.PointLight(color, 0, distance, decay);
+      }
       l.userData.fixture = null;
-      scene.add(l);
+      parent.add(l);
       this.lights.push(l);
     }
     this.timer = 0;
@@ -47,58 +64,63 @@ export class LightPool {
     }
     if (this.disturb) {
       const d = f.pos.distanceTo(this.disturb.pos);
-      if (d < this.disturb.radius) {
-        const k = 1 - d / this.disturb.radius;
-        if (Math.random() < k * 0.5) lv *= 0.05;
-      }
+      if (d < this.disturb.radius && Math.random() < (1 - d / this.disturb.radius) * 0.5) lv *= 0.05;
     }
     return lv;
+  }
+
+  assign(camPos, instant = false) {
+    const wanted = this.fixtures
+      .filter((f) => !f.dead)
+      .map((f) => ({ f, d: f.pos.distanceToSquared(camPos) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, this.lights.length)
+      .map((e) => e.f);
+    const wantedSet = new Set(wanted);
+    const kept = new Set();
+    const free = [];
+    // keep stable assignments so lights don't pop between fixtures
+    for (const l of this.lights) {
+      const f = l.userData.fixture;
+      if (f && wantedSet.has(f) && !kept.has(f)) kept.add(f);
+      else free.push(l);
+    }
+    for (const f of wanted) {
+      if (kept.has(f)) continue;
+      const l = free.pop();
+      if (!l) break;
+      l.userData.fixture = f;
+      l.intensity = instant ? (f.intensity ?? this.baseIntensity) : 0;
+      l.position.copy(f.pos);
+      if (this.type === 'point') l.position.y -= 0.25;
+      else l.position.y -= 0.03;
+      if (f.color) l.color.set(f.color);
+      if (this.type === 'rect' && f.rot) l.rotation.set(-Math.PI / 2, 0, f.rot);
+    }
+    for (const l of free) l.userData.fixture = null;
+  }
+
+  /** Assign and light instantly (used before capturing reflections). */
+  snap(camPos) {
+    this.assign(camPos, true);
   }
 
   update(dt, t, camPos) {
     this.timer -= dt;
     if (this.timer <= 0) {
       this.timer = 0.25;
-      // choose nearest fixtures (in front slightly preferred is not needed)
-      const wanted = this.fixtures
-        .filter((f) => !f.dead)
-        .map((f) => ({ f, d: f.pos.distanceToSquared(camPos) }))
-        .sort((a, b) => a.d - b.d)
-        .slice(0, this.lights.length)
-        .map((e) => e.f);
-      const wantedSet = new Set(wanted);
-      const kept = new Set();
-      const free = [];
-      // keep stable assignments so lights don't pop between fixtures
-      for (const l of this.lights) {
-        const f = l.userData.fixture;
-        if (f && wantedSet.has(f) && !kept.has(f)) kept.add(f);
-        else free.push(l);
-      }
-      for (const f of wanted) {
-        if (kept.has(f)) continue;
-        const l = free.pop();
-        if (!l) break;
-        l.userData.fixture = f;
-        l.intensity = 0;
-        l.position.copy(f.pos);
-        l.position.y -= 0.25;
-        if (f.color) l.color.set(f.color);
-      }
-      for (const l of free) l.userData.fixture = null;
+      this.assign(camPos);
     }
     for (const f of this.fixtures) f.level = this.levelOf(f, t);
     for (const l of this.lights) {
       const f = l.userData.fixture;
       const target = f ? f.level * (f.intensity ?? this.baseIntensity) : 0;
-      // quick attack keeps flicker crisp, soft release hides pool reassignment
       l.intensity += (target - l.intensity) * Math.min(1, dt * (target < l.intensity ? 30 : 8));
     }
     if (this.mesh) {
       for (const f of this.fixtures) {
         if (f.instance === undefined) continue;
-        const v = 0.12 + f.level * 0.88;
-        this._c.copy(this.baseColor).multiplyScalar(v);
+        this._c.copy(this.baseColor).multiplyScalar(0.1 + f.level * 0.9);
         this.mesh.setColorAt(f.instance, this._c);
       }
       if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;

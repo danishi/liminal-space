@@ -1,60 +1,93 @@
-# Liminal Drift（境界漂流）
+# Liminal Drift
 
-three.js で作った、リミナルスペースを歩いて探索する一人称ゲームです。
-各階層に散らばる「記憶の欠片」を 3 つ集めると出口が開きます。
-画像や音声ファイルは使っていません。テクスチャは Canvas、音は Web Audio API でその場で生成しています。
+A first-person walking game about liminal spaces, built with [three.js](https://threejs.org/).
+There is nothing to win. You drift from one empty place to the next.
 
-## 階層
+**Play:** https://danishi.github.io/liminal-space/
 
-| コード | 名前 | 雰囲気 | 危険度 | 住人・クリーチャー |
-| --- | --- | --- | --- | --- |
-| LEVEL 0 | 黄色い部屋 | 無機質・不穏 | ●●○ | 放浪者（ヒントをくれる）／徘徊者（足音を聞きつけて追ってくる） |
-| LEVEL 37 | プールルーム | 明るい・静寂 | ○○○ | おおきなアヒル／つつくと鳴く小さなアヒル |
-| LEVEL 3.14 | パステルの夢 | 明るい・ファンシー | ○○○ | まるい住人「モチ」たち |
-| LEVEL 188 | 黄昏の校舎 | 郷愁・夕暮れ | ●●○ | 居残りの生徒／下校のチャイム後に現れる見回りの先生 |
-| LEVEL 11 | 深夜のホテル | ダーク・不気味 | ●●● | ベルボーイ／見ていない間だけ近づく「笑うもの」 |
+No image or audio files are shipped: every texture is painted on a canvas at load time (including
+PBR normal and roughness maps), and every sound is synthesised with the Web Audio API.
 
-レイアウトは挑戦ごとにランダム生成されます。
+## How it works
 
-## 操作
+- Each level is picked at random and built procedurally, so no two visits look the same.
+- You leave a level when its **signal** (top right) fades out, when you walk through a **door that hums**
+  (the light behind it hints at where it leads), or when you **fall into a hole**.
+- Levels have height: stairs, sunken rooms, raised decks, platforms and pits.
+- **Unease** grows with every level you pass through and with distance from where you arrived. The
+  deeper you go, the more cluttered and wrong things get: more props and stranger ones, dead and
+  flickering lights, murkier water, greyer skies, more holes, and apparitions that stand and watch.
+  They never hurt you.
+- Some residents will talk to you.
 
-| 入力 | 動作 |
+## Levels
+
+| Code | Level | Mood | Residents and things |
+| --- | --- | --- | --- |
+| LEVEL 0 | The Backrooms | Sterile, uneasy | The Drifter, a ringing phone, a tall figure at the ends of hallways |
+| LEVEL 37 | The Poolrooms | Bright, calm | The Big Duck, little ducks you can poke, deep ends you can sink into |
+| LEVEL 3.14 | Pastel Dreamscape | Bright, whimsical | Mochi residents, holes that open onto the sky |
+| LEVEL 188 | After-School Hallways 黄昏の校舎 | Nostalgic (Japan) | Students who stayed behind; after the chime, someone walks the halls |
+| LEVEL 8 | Last-Train Underpass 終電後の地下通路 | Fluorescent, empty (Japan) | The station attendant; don't step onto the tracks |
+| LEVEL 1000 | Thousand Gates 千本鳥居 | Mystical, night (Japan) | The white fox, stone lanterns, a thousand torii |
+| LEVEL 11 | The Night Hotel | Dark, eerie | The bellboy, a grin in the dark |
+
+## Controls
+
+| Input | Action |
 | --- | --- |
-| `W` `A` `S` `D` / 矢印キー | 移動 |
-| マウス | 見回す（画面クリックで視点固定） |
-| `Shift` | 走る（体力を消費し、足音で気づかれやすくなる） |
-| `E` / `Space` / 左クリック | 話す・調べる・会話を進める |
-| `F` | 懐中電灯（使える階層のみ） |
-| `M` / `Tab` | 地図を拡大 |
-| `Esc` / `P` | 一時停止 |
+| `↑` `↓` / `W` `S` | Walk forward / back |
+| `←` `→` | Turn (you can play with the keyboard only) |
+| `A` `D` | Step sideways |
+| Mouse | Look around (click to capture the pointer) |
+| `Shift` | Run |
+| `E` / `Space` / left click | Talk, interact, continue dialogue |
+| `F` | Flashlight (where available) |
+| `M` / `Tab` | Map |
+| `Esc` / `P` | Pause |
 
-- スマホ: 画面左で移動、右をなぞって見回し。ボタンで走る・調べる・ライト・地図。
-- ゲームパッド: 左スティック移動、右スティック視点、A 調べる、RB/RT 走る、Y ライト、Start 一時停止、Back 地図。
-- 設定画面で視点感度・視野角・音量・画質・上下反転・歩行の揺れ・画面効果の軽減を変えられます（ブラウザに保存）。
+- **Steering assist** (Settings: Off / Low / Medium / High): while you walk and aren't looking around
+  by hand, the view follows the open path around corners and levels itself.
+- **Touch:** drag on the left half to move, on the right half to look; on-screen buttons for run,
+  interact, light and map.
+- **Gamepad:** left stick moves, right stick looks, A interacts, RB/RT runs, Y toggles the light,
+  Start pauses, Back opens the map.
 
-## 開発
+Settings (look sensitivity, field of view, volume, graphics quality, steering assist, minimap,
+inverted look, head bob, reduced screen effects, FPS counter) are saved in the browser.
+
+## Graphics
+
+- PBR materials with procedural normal and roughness maps
+- Per-level reflection probe (PMREM) captured at the arrival point
+- Ground-truth ambient occlusion (GTAO) on Medium and High
+- Rectangular area lights for fluorescent panels, pooled so only the nearest fixtures are real lights
+- AgX / neutral tone mapping, bloom, and a camcorder pass (grain, vignette, chromatic aberration)
+- Static props are merged per material, so hundreds of props cost only a few draw calls
+
+## Development
 
 ```bash
 npm install
 npm run dev      # http://localhost:5173
-npm run build    # dist/ に出力
+npm run build    # outputs dist/
 npm run preview
 ```
 
-## GitHub Pages への自動デプロイ
+## Deployment
 
-`.github/workflows/deploy.yml` が `main` と `claude/**` ブランチへの push でビルドし、GitHub Pages に公開します。
+`.github/workflows/deploy.yml` builds every push and pull request, and deploys `main` to GitHub
+Pages. Pages must use **Settings → Pages → Source: GitHub Actions**.
 
-初回だけ、リポジトリの **Settings → Pages → Build and deployment → Source** を **GitHub Actions** にしてください。
-公開 URL は `https://<ユーザー名>.github.io/liminal-space/` です。
-
-## 構成
+## Project layout
 
 ```
 src/
-  core/      グリッド・テクスチャ生成・音響・入力・ポストエフェクト・照明プール
-  game/      ゲームループ、プレイヤー、ワールド（当たり判定と目的）
-  entities/  欠片、出口、住人、クリーチャー（徘徊者・笑うもの）
-  stages/    各階層の生成ロジック
-  ui/        画面遷移、HUD、ミニマップ
+  core/      grid (2.5D height field), procedural surfaces and textures, audio, input,
+             post-processing, light pool
+  game/      game loop and drifting, player (steering assist, gravity), world (collision, unease, doors)
+  entities/  residents (NPC), doors to other levels, apparitions
+  props/     prop kit (batched merging), prop library, canvas-painted signs and posters
+  stages/    one module per level, plus shared shell/decoration helpers
+  ui/        screens, HUD, maps
 ```

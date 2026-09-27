@@ -1,21 +1,24 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Grid, FLOOR, WALL, WATER, DOORWAY, buildWallFaces, buildCellQuads, worldPlane } from '../core/grid.js';
-import { poolTileWhite, poolTileBlue, tileBump, waterNormal, caustics, labelTexture } from '../core/textures.js';
-import { mesh, ceilingFixtures, doorModel } from './common.js';
+import { Grid, FLOOR, WALL, WATER, DOORWAY, HOLE, buildWallFaces, buildCellQuads, buildFloors } from '../core/grid.js';
+import { tiles, pbr, waterNormalMap } from '../core/surfaces.js';
+import { caustics, labelTexture } from '../core/textures.js';
+import { mesh, buildShell, ceilingFixtures, doorModel, decorate } from './common.js';
+import { PropKit } from '../props/kit.js';
+import * as P from '../props/library.js';
 import { NPC, mat } from '../entities/npc.js';
+import { Watcher } from '../entities/creatures.js';
 
 const H = 4.2;
 const LINTEL = 2.9;
 const POOL = -0.55;
-const WATER_Y = -0.1;
+const WATER_Y = -0.12;
 
 function duckModel(scale = 1) {
   const g = new THREE.Group();
-  const yellow = mat(0xffd23f, { roughness: 0.35 });
-  const orange = mat(0xff8a1e, { roughness: 0.4 });
-  const black = mat(0x151515, { roughness: 0.2 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 20, 14), yellow);
+  const yellow = mat(0xffd23f, { roughness: 0.3 });
+  const orange = mat(0xff8a1e, { roughness: 0.35 });
+  const black = mat(0x151515, { roughness: 0.15 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16), yellow);
   body.scale.set(1, 0.72, 1.25);
   body.position.y = 0.25;
   g.add(body);
@@ -23,7 +26,7 @@ function duckModel(scale = 1) {
   tail.rotation.x = -2.2;
   tail.position.set(0, 0.5, -0.55);
   g.add(tail);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 18, 14), yellow);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 14), yellow);
   head.position.set(0, 0.82, 0.3);
   g.add(head);
   const beak = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), orange);
@@ -39,47 +42,17 @@ function duckModel(scale = 1) {
   return g;
 }
 
-function ladder(x, z, yaw) {
-  const g = new THREE.Group();
-  const steel = new THREE.MeshStandardMaterial({ color: 0xdfe5e8, metalness: 0.9, roughness: 0.2 });
-  for (const sx of [-0.25, 0.25]) {
-    const rail = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.025, 8, 16, Math.PI), steel);
-    rail.position.set(sx, 0.35, 0.02);
-    rail.rotation.y = Math.PI / 2;
-    g.add(rail);
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.1, 8), steel);
-    leg.position.set(sx, -0.2, 0.3);
-    g.add(leg);
-  }
-  for (let r = 0; r < 3; r++) {
-    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.08), steel);
-    rung.position.set(0, -0.1 - r * 0.2, 0.32);
-    g.add(rung);
-  }
-  g.position.set(x, 0, z);
-  g.rotation.y = yaw;
-  return g;
-}
-
 export default {
   id: 'poolrooms',
   code: 'LEVEL 37',
-  name: 'プールルーム',
-  en: 'The Poolrooms',
-  tags: ['明るい', '静寂'],
-  danger: 0,
-  art: { c1: '#bfe9ee', c2: '#5fb4c4', c3: '#ffffff' },
-  desc: '白いタイルと澄んだ水。反響する水音だけが、いつまでも続く昼下がり。',
-  goal: '記憶の欠片を 3 つ集め、光のもれる扉を探す。',
-  tip: 'ここに危険はない。浅いプールは歩けるが、少し足が重くなる。',
-  fragmentColor: 0xaef4ff,
-  memories: ['閉館間際の市民プールに差しこむ西日', 'ビーチボールが水面をすべる音', '塩素の匂いのするタオルにくるまった帰り道'],
-  clearLine: '水音が遠ざかる。濡れた足跡だけが、白いタイルに残った。',
+  name: 'The Poolrooms',
+  sub: 'Tiles, water, echoes',
+  tint: 0xd8fbff,
 
   build(world) {
     const rng = world.rng;
     const RX = 5;
-    const RS = 6; // room interior size in cells
+    const RS = 6;
     const W = RX * (RS + 1) + 1;
     const cs = 2.0;
     const g = (world.grid = new Grid(W, W, cs, WALL));
@@ -89,11 +62,18 @@ export default {
         const i0 = 1 + rx * (RS + 1);
         const j0 = 1 + ry * (RS + 1);
         g.fillRect(i0, j0, i0 + RS - 1, j0 + RS - 1, FLOOR);
-        rooms.push({ rx, ry, i0, j0 });
+        rooms.push({ rx, ry, i0, j0, h: 0 });
       }
     }
-    // connect rooms: random spanning tree + extra loops
     const idx = (rx, ry) => ry * RX + rx;
+    const spawnRoom = rooms[idx(2, 2)];
+    // some rooms are raised decks
+    for (const r of rooms) {
+      if (r === spawnRoom || !rng.chance(0.3)) continue;
+      r.h = rng.pick([1.1, 2.2]);
+      g.heightRect(r.i0, r.j0, r.i0 + RS - 1, r.j0 + RS - 1, r.h);
+    }
+    // connect rooms: spanning tree + loops; stairs where heights differ
     const visited = new Set([0]);
     const stack = [rooms[0]];
     const links = [];
@@ -118,90 +98,130 @@ export default {
     for (const [a, b] of links) {
       const wide = rng.int(2, 3);
       const off = rng.int(1, RS - wide - 1);
-      const type = rng.chance(0.25) ? FLOOR : DOORWAY;
-      if (a.rx !== b.rx) {
-        const wi = Math.max(a.i0, b.i0) - 1;
-        for (let k = 0; k < wide; k++) g.set(wi, a.j0 + off + k, type);
-      } else {
-        const wj = Math.max(a.j0, b.j0) - 1;
-        for (let k = 0; k < wide; k++) g.set(a.i0 + off + k, wj, type);
+      const type = rng.chance(0.3) ? FLOOR : DOORWAY;
+      const horiz = a.rx !== b.rx;
+      const [lo, hi] = a.h <= b.h ? [a, b] : [b, a];
+      for (let k = 0; k < wide; k++) {
+        let wi;
+        let wj;
+        if (horiz) {
+          wi = Math.max(a.i0, b.i0) - 1;
+          wj = a.j0 + off + k;
+        } else {
+          wi = a.i0 + off + k;
+          wj = Math.max(a.j0, b.j0) - 1;
+        }
+        g.set(wi, wj, type);
+        g.setHeight(wi, wj, lo.h);
+        if (hi.h > lo.h) {
+          // a staircase inside the higher room, rising away from the doorway toward it
+          const dir = horiz ? (hi.i0 > lo.i0 ? 0 : 1) : (hi.j0 > lo.j0 ? 2 : 3);
+          const [dx, dy] = [[1, 0], [-1, 0], [0, 1], [0, -1]][dir];
+          const steps = hi.h - lo.h > 1.5 ? 2 : 1;
+          for (let s = 0; s < steps; s++) g.setRamp(wi + dx * (s + (s === 0 ? 0 : 0)), wj + dy * s, dir, lo.h + ((hi.h - lo.h) / steps) * s, (hi.h - lo.h) / steps);
+          if (steps === 2) g.set(wi + dx, wj + dy, FLOOR);
+        }
       }
     }
-    // pools
-    const spawnRoom = rooms[idx(2, 2)];
+    // pools: shallow basins, some with a deep drop in the middle
     const pools = [];
     for (const r of rooms) {
-      if (r === spawnRoom || !rng.chance(0.6)) continue;
+      if (r === spawnRoom || !rng.chance(0.62)) continue;
       const pw = rng.int(3, RS - 2);
       const ph = rng.int(3, RS - 2);
       const pi = r.i0 + rng.int(1, RS - pw - 1);
       const pj = r.j0 + rng.int(1, RS - ph - 1);
-      g.fillRect(pi, pj, pi + pw - 1, pj + ph - 1, WATER);
+      for (let j = pj; j < pj + ph; j++) {
+        for (let i = pi; i < pi + pw; i++) {
+          if (g.ramp[j * W + i]) continue;
+          g.set(i, j, WATER);
+          g.setHeight(i, j, r.h + POOL);
+        }
+      }
       pools.push({ pi, pj, pw, ph, r });
     }
     const si = spawnRoom.i0 + (RS >> 1);
     const sj = spawnRoom.j0 + (RS >> 1);
-    g.sealUnreachable(si, sj);
-    const sp = g.center(si, sj);
-    world.spawn = { x: sp.x - cs / 2, z: sp.z - cs / 2, yaw: rng.pick([0, Math.PI / 2, Math.PI, -Math.PI / 2]) };
+    world.spawn = { x: (si) * cs, z: (sj) * cs, yaw: rng.pick([0, Math.PI / 2, Math.PI, -Math.PI / 2]) };
+    world.finalizeLayout();
+    const deepChance = 0.25 + world.depth * 0.1;
+    const deep = new Set();
+    for (const p of pools) {
+      if (p.pw < 3 || p.ph < 3 || !rng.chance(deepChance)) continue;
+      const i = p.pi + (p.pw >> 1);
+      const j = p.pj + (p.ph >> 1);
+      g.set(i, j, HOLE);
+      deep.add(j * W + i);
+    }
 
     // ---- materials
-    const white = new THREE.MeshStandardMaterial({ map: poolTileWhite(), bumpMap: tileBump(), bumpScale: 0.6, roughness: 0.25, metalness: 0 });
-    const blue = new THREE.MeshStandardMaterial({
-      map: poolTileBlue(), roughness: 0.3,
-      emissive: 0x9ff4ff, emissiveMap: caustics(), emissiveIntensity: 0.35,
-    });
+    const white = pbr(tiles('s-pool-white', { n: 8, base: [238, 242, 240], grout: [176, 188, 190], gloss: 0.06 }), { normalScale: 0.8 });
+    const blueSet = tiles('s-pool-blue', { n: 8, base: [96, 186, 205], grout: [80, 140, 156], jitter: 14, gloss: 0.06 });
+    const blue = pbr(blueSet, { emissive: 0x9ff4ff, emissiveMap: caustics(), emissiveIntensity: 0.3 });
     const causticMap = blue.emissiveMap;
-    const pmrem = new THREE.PMREMGenerator(world.game.renderer);
-    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    pmrem.dispose();
-    world.onDispose.push(() => envTex.dispose());
-    const waterMat = new THREE.MeshStandardMaterial({
-      color: 0x8fe3ee, transparent: true, opacity: 0.55, roughness: 0.04, metalness: 0.1,
-      normalMap: waterNormal(), normalScale: new THREE.Vector2(0.35, 0.35), envMap: envTex, envMapIntensity: 1.4, depthWrite: false,
+    const murk = Math.min(1, world.depth * 0.18);
+    const waterMat = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(0x8fe3ee).lerp(new THREE.Color(0x2a4a3a), murk), transparent: true, opacity: 0.5 + murk * 0.35,
+      roughness: 0.03, metalness: 0, transmission: 0, ior: 1.33, clearcoat: 1, clearcoatRoughness: 0.05,
+      normalMap: waterNormalMap(), normalScale: new THREE.Vector2(0.3, 0.3), depthWrite: false,
     });
     const nMap = waterMat.normalMap;
 
-    const isOpen = (c) => c !== WALL;
-    mesh(world, buildWallFaces(g, { y0: POOL - 0.05, y1: H, uScale: 2, vScale: 2, solid: (c) => c === WALL, open: isOpen }), white);
-    // lintels over doorways
-    mesh(world, buildWallFaces(g, { y0: LINTEL, y1: H, uScale: 2, vScale: 2, solid: (c) => c === DOORWAY, open: (c) => c === FLOOR || c === WATER }), white);
-    mesh(world, buildCellQuads(g, (c) => c === DOORWAY, LINTEL, false, 2), white);
-    // floors, pool basins and their sides
-    mesh(world, buildCellQuads(g, (c) => c === FLOOR || c === DOORWAY, 0, true, 2), white);
-    mesh(world, buildCellQuads(g, (c) => c === WATER, POOL, true, 2), blue);
-    mesh(world, buildWallFaces(g, { y0: POOL, y1: 0, uScale: 2, vScale: 2, solid: (c) => c === FLOOR || c === DOORWAY, open: (c) => c === WATER }), blue);
-    const water = mesh(world, buildCellQuads(g, (c) => c === WATER, WATER_Y, true, 4), waterMat);
-    water.renderOrder = 2;
-    // pool edge coping
-    const coping = new THREE.MeshStandardMaterial({ color: 0xf7f7f2, roughness: 0.5 });
-    mesh(world, buildWallFaces(g, { y0: -0.02, y1: 0.03, inset: 0.06, solid: (c) => c === FLOOR || c === DOORWAY, open: (c) => c === WATER }), coping);
-    mesh(world, worldPlane(0, 0, W * cs, W * cs, H, false, 2), white);
-
-    for (const p of pools) {
-      if (!rng.chance(0.7)) continue;
-      const c = g.center(p.pi, p.pj - 1);
-      world.root.add(ladder(c.x + 0.4, p.pj * cs - 0.02, 0));
+    const isWet = (c, i, j) => c === WATER || (c === HOLE && deep.has(j * W + i));
+    const ceilArr = new Float32Array(W * W).fill(H);
+    for (const r of rooms) {
+      for (let j = r.j0 - 1; j <= r.j0 + RS; j++) for (let i = r.i0 - 1; i <= r.i0 + RS; i++) ceilArr[j * W + i] = Math.max(ceilArr[j * W + i], r.h + H);
     }
-
-    // skylight fixtures
-    world.root.add(new THREE.HemisphereLight(0xf4ffff, 0xc4e4e6, 1.3));
-    ceilingFixtures(world, {
-      every: 3, offset: 2, y: H - 0.02, size: [1.6, 1.6], color: 0xf2ffff, panelColor: [2.2, 2.3, 2.3],
-      intensity: 9, distance: 14, flicker: 0, dead: 0,
+    const surface = (i, j) => g.hgt[j * W + i] - POOL + WATER_Y;
+    buildShell(world, {
+      height: H,
+      ceil: (i, j) => ceilArr[j * W + i],
+      wall: { mat: white, u: 2, v: 2 },
+      floor: { mat: white, uv: 2 },
+      floorPred: (c) => c !== WATER,
+      ceilMat: { mat: white, uv: 2 },
+      stairs: white,
+      riserMat: white,
+      pit: new THREE.MeshBasicMaterial({ color: 0x06222a }),
     });
+    mesh(world, buildFloors(g, (c) => c === WATER, 2), blue);
+    // lintels over doorways
+    mesh(world, buildWallFaces(g, { y0: (i, j) => g.heightOf(i, j) + LINTEL, y1: (i, j) => world.ceilAt(i, j), uScale: 2, vScale: 2, solid: (c) => c === DOORWAY, open: (c) => c === FLOOR || c === WATER }), white);
+    mesh(world, buildCellQuads(g, (c) => c === DOORWAY, (i, j) => g.heightOf(i, j) + LINTEL, false, 2), white);
+    const water = mesh(world, buildCellQuads(g, isWet, surface, true, 4), waterMat);
+    water.renderOrder = 2;
+
+    world.root.add(new THREE.HemisphereLight(0xf4ffff, 0xb8d8da, 0.75 - murk * 0.4));
+    ceilingFixtures(world, {
+      type: 'rect', every: 3, offset: 2, size: [1.6, 1.6], color: 0xf2ffff, panelColor: [2.2, 2.3, 2.3],
+      intensity: 11, distance: 14, flicker: 0, dead: 0.02,
+    });
+
+    const kit = new PropKit(world);
+    decorate(world, kit, {
+      density: { wall: 0.12, high: 0.04, floor: 0.05, clutter: 0.08, ceil: 0 },
+      waterSurface: surface,
+      wall: [
+        { p: P.towelStack, w: 2 }, { p: P.pottedPalm, w: 2 }, { p: P.bench, w: 1 }, { p: P.lockers, w: 1.2, o: { color: 0x7fb8c8 } },
+        { p: P.fakeDoor, w: 0.8, min: 0.6 },
+      ],
+      high: [{ p: P.wallClock, w: 1 }, { p: P.handprints, w: 1, min: 0.8 }],
+      floor: [{ p: P.lounger, w: 3 }, { p: P.lifeguardChair, w: 1 }],
+      clutter: [{ p: P.drainGrate, w: 2 }, { p: P.beachBall, w: 1.5, floats: true }, { p: P.puddle, w: 1 }],
+    });
+    kit.finish();
 
     Object.assign(world.env, {
       background: 0xd9eff0,
-      fog: new THREE.FogExp2(0xcfe6e7, 0.024),
-      exposure: 0.9,
+      fog: new THREE.FogExp2(new THREE.Color(0xcfe6e7).lerp(new THREE.Color(0x5a6a68), murk), 0.022 + murk * 0.02),
+      exposure: 0.78,
       toneMapping: THREE.NeutralToneMapping,
       postfx: { bloom: 0.3, bloomThreshold: 0.92, bloomRadius: 0.55, grain: 0.035, vignette: 0.22, chroma: 0.0012, scan: 0.02, tint: [0.97, 1.02, 1.03] },
+      ao: 0.8,
+      envIntensity: 0.8,
       ambience: 'pool',
       reverb: [3.6, 2.2],
-      sanityRegen: 3,
     });
-    world.floorFn = (x, z) => (world.isWater(x, z) ? POOL : 0);
     world.speedFn = (x, z) => (world.isWater(x, z) ? 0.62 : 1);
     world.surfaceFn = (x, z) => (world.isWater(x, z) ? 'water' : 'tile');
 
@@ -217,45 +237,36 @@ export default {
     if (bigPool) {
       const cx = (bigPool.pi + bigPool.pw / 2) * cs;
       const cz = (bigPool.pj + bigPool.ph / 2) * cs;
+      const base = bigPool.r.h + WATER_Y - 0.25;
       const model = duckModel(1.5);
-      model.position.set(cx, WATER_Y - 0.25, cz);
+      model.position.set(cx + cs * 0.5, base, cz);
       const duck = new NPC(world, {
-        name: 'おおきなアヒル',
+        name: 'the Big Duck',
         pos: model.position.clone(),
         model,
         voice: 1.6,
         radius: 1.0,
         conversations: [
-          [
-            'ぷか……ぷか……。',
-            'ようこそ、水の部屋へ。ここは静かで、明るくて、ずっと同じ昼下がり。',
-            '欠片をさがしているのかい？ 天井まで伸びる光の柱をたどるといいよ。',
-            '水の中も歩けるけど、少し足が重くなるからね。',
-          ],
-          [
-            'ここには怖いものはいないよ。……たぶんね。',
-            'ただ、長くいると帰りたくなくなる。それがいちばん怖いのかもしれないね。',
-          ],
-          ['ぷか。'],
+          ['Bob... bob...', 'Welcome to the water rooms. Quiet, bright, and always the same afternoon.', 'Mind the deep ends. Sink into one and you come up somewhere else entirely.'],
+          ['Nothing scary lives here. ...Probably.', 'Stay too long, though, and you stop wanting to leave. Maybe that is the scariest part.'],
+          ['Bob.'],
         ],
         onTalk: (game) => game.audio.squeak(),
       });
-      duck.idle = (dt) => {
-        duck.object.position.y = WATER_Y - 0.25 + Math.sin(duck.t * 1.3) * 0.05;
+      duck.idle = () => {
+        duck.object.position.y = base + Math.sin(duck.t * 1.3) * 0.05;
         duck.object.rotation.z = Math.sin(duck.t * 0.9) * 0.05;
       };
       world.add(duck);
     }
-    for (const p of pools.slice(0, 6)) {
+    for (const p of pools.slice(0, 7)) {
       const model = duckModel(0.28);
-      const x = (p.pi + rng.float(0.5, p.pw - 0.5)) * cs;
-      const z = (p.pj + rng.float(0.5, p.ph - 0.5)) * cs;
-      model.position.set(x, WATER_Y - 0.03, z);
+      const x = (p.pi + rng.float(0.3, p.pw - 0.3)) * cs;
+      const z = (p.pj + rng.float(0.3, p.ph - 0.3)) * cs;
+      const baseY = p.r.h + WATER_Y - 0.03;
+      model.position.set(x, baseY, z);
       model.rotation.y = rng.float(0, Math.PI * 2);
-      const little = new NPC(world, {
-        name: 'アヒル', pos: model.position.clone(), model, radius: 0, face: false, marker: false,
-        prompt: 'アヒルをつつく', conversations: [[]],
-      });
+      const little = new NPC(world, { name: 'a duck', pos: model.position.clone(), model, radius: 0, face: false, marker: false, prompt: 'Poke the duck', conversations: [[]] });
       little.interactRange = 2.2;
       little.aimHeight = 0.1;
       little.interact = (game) => {
@@ -263,7 +274,6 @@ export default {
         little.hop = 1;
       };
       little.hop = 0;
-      const baseY = model.position.y;
       little.idle = (dt) => {
         little.hop = Math.max(0, little.hop - dt * 2.5);
         model.position.y = baseY + Math.sin(little.t * 1.7) * 0.02 + Math.sin(little.hop * Math.PI) * 0.25;
@@ -271,15 +281,16 @@ export default {
       };
       world.add(little);
     }
+    if (!world.attract && world.depth >= 2) world.add(new Watcher(world, { look: { body: 0x1a2426 } }));
   },
 
-  makeExit() {
+  makeDoor(world, dest) {
     return doorModel({
       width: 1.1,
       height: 2.3,
       doorColor: 0xf3f6f4,
       frameColor: 0xc9d6d7,
-      lightColor: 0xfff6dc,
+      lightColor: dest.tint || 0xfff6dc,
       knob: 0x9aa5a6,
       extras(group) {
         const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.14), new THREE.MeshBasicMaterial({ map: labelTexture('OUT', { w: 256, h: 72, bg: '#1f6f7c', fg: '#e9fbff', font: '44px "DotGothic16", monospace' }) }));

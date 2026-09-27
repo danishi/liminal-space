@@ -15,7 +15,7 @@ export class NPC {
     this.talkIndex = 0;
     this.voice = voice;
     this.face = face;
-    this.promptText = prompt || `${name}に話しかける`;
+    this.promptText = prompt || `Talk to ${name}`;
     this.onTalk = onTalk;
     this.interactRange = 2.6;
     this.aimHeight = 1.0;

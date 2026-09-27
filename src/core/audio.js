@@ -218,7 +218,6 @@ export class AudioEngine {
 
   step(surface, loud = 1) {
     if (!this.ready) return;
-    const t = this.now;
     const r = 0.85 + Math.random() * 0.3;
     switch (surface) {
       case 'tile':
@@ -231,6 +230,13 @@ export class AudioEngine {
         break;
       case 'soft':
         this.burst({ type: 'lowpass', freq: 1100 * r, d: 0.08, peak: 0.14 * loud, send: 0.1 });
+        break;
+      case 'stone':
+        this.burst({ type: 'bandpass', freq: 1800 * r, q: 0.9, d: 0.05, peak: 0.12 * loud, send: 0.3 });
+        this.tone({ f: 120 * r, d: 0.05, peak: 0.08 * loud, send: 0.1 });
+        break;
+      case 'gravel':
+        for (let i = 0; i < 3; i++) this.burst({ type: 'bandpass', freq: (2200 + Math.random() * 1800) * r, q: 1.5, t: this.now + i * 0.018, d: 0.05, peak: 0.07 * loud, send: 0.1 });
         break;
       case 'wood':
         this.burst({ type: 'bandpass', freq: 1300 * r, q: 1, d: 0.06, peak: 0.14 * loud, send: 0.35 });
@@ -373,6 +379,81 @@ export class AudioEngine {
     });
   }
 
+  /** Tape-warp whoosh used when drifting between levels. */
+  driftSound(kind = 'door') {
+    if (!this.ready) return;
+    const t = this.now;
+    if (kind === 'fall') {
+      this.burst({ type: 'bandpass', freq: 400, q: 0.6, t, a: 0.4, d: 1.4, peak: 0.5, send: 0.6, sweep: 2400 });
+      this.tone({ type: 'sine', f: 180, f2: 40, t, a: 0.3, d: 1.6, peak: 0.25, send: 0.4 });
+    } else {
+      this.burst({ type: 'lowpass', freq: 5000, t, a: 0.05, d: 1.2, peak: 0.35, send: 0.8, sweep: 200 });
+      this.tone({ type: 'sawtooth', f: 90, f2: 30, t, a: 0.1, d: 1.0, peak: 0.05, send: 0.6 });
+    }
+  }
+
+  /** Positional low hum behind a door to another level. Returns { stop }. */
+  doorHum(x, y, z) {
+    if (!this.ready) return null;
+    const p = this.panner(x, y, z, { ref: 1.5, rolloff: 1.6, max: 30 });
+    const n = this.noise();
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 180 + Math.random() * 120;
+    f.Q.value = 3;
+    const g = this.ctx.createGain();
+    g.gain.value = 0.5;
+    const o = this.ctx.createOscillator();
+    o.frequency.value = 55 + Math.random() * 30;
+    const og = this.ctx.createGain();
+    og.gain.value = 0.12;
+    n.connect(f).connect(g).connect(p);
+    o.connect(og).connect(p);
+    n.start();
+    o.start();
+    return {
+      stop: () => {
+        try {
+          n.stop();
+          o.stop();
+        } catch {
+          /* already stopped */
+        }
+        p.disconnect();
+      },
+    };
+  }
+
+  phoneRing(p) {
+    if (!this.ready) return;
+    const t = this.now;
+    for (let r = 0; r < 2; r++) {
+      for (let i = 0; i < 12; i++) {
+        const tt = t + r * 0.55 + i * 0.035;
+        this.tone({ type: 'square', f: i % 2 ? 480 : 440, t: tt, a: 0.002, d: 0.03, peak: 0.05, send: 0.3, dest: p });
+      }
+    }
+  }
+
+  trainRumble() {
+    if (!this.ready) return;
+    const t = this.now;
+    this.burst({ type: 'lowpass', freq: 120, q: 0.8, t, a: 2.5, d: 4.5, peak: 0.6, send: 0.8, bus: this.musicBus });
+    for (let i = 0; i < 8; i++) this.burst({ type: 'bandpass', freq: 300, q: 2, t: t + 1.5 + i * 0.32, a: 0.01, d: 0.12, peak: 0.12, send: 0.8, bus: this.musicBus });
+  }
+
+  departureMelody() {
+    if (!this.ready) return;
+    const t = this.now;
+    [76, 79, 84, 79, 81, 84, 88, 86].forEach((n, i) => this.tone({ type: 'triangle', f: NOTE(n), t: t + i * 0.18, d: 0.3, peak: 0.035, send: 1, bus: this.musicBus }));
+  }
+
+  temple() {
+    if (!this.ready) return;
+    const t = this.now;
+    for (const [f, a] of [[98, 0.18], [196.5, 0.08], [264, 0.05], [417, 0.03]]) this.tone({ type: 'sine', f, t, a: 0.01, d: 7, peak: a * 0.5, send: 1.2, bus: this.musicBus });
+  }
+
   // ---- fear & heartbeat ------------------------------------------------------
 
   setFear(level) {
@@ -427,6 +508,8 @@ class Ambience {
       dream: () => this.dream(),
       hotel: () => this.hotel(),
       school: () => this.school(),
+      station: () => this.station(),
+      shrine: () => this.shrine(),
     }[kind];
     if (setup) setup();
   }
@@ -524,6 +607,21 @@ class Ambience {
     this.pad = [53, 60, 64, 69].map((n) => this.osc('sine', NOTE(n), 0.008));
   }
 
+  station() {
+    const lp = this.filtered('lowpass', 300, 1);
+    this.osc('sawtooth', 50, 0.035, lp);
+    this.osc('sawtooth', 100.4, 0.015, lp);
+    this.noiseLayer('bandpass', 5200, 5, 0.006);
+    this.noiseLayer('lowpass', 200, 0.6, 0.03);
+  }
+
+  shrine() {
+    const g = this.noiseLayer('bandpass', 700, 0.4, 0.03);
+    this.lfo(g.gain, 0.07, 0.02);
+    this.noiseLayer('highpass', 6000, 0.5, 0.004);
+    this.melody = 62;
+  }
+
   update(dt) {
     const e = this.e;
     const t = e.now;
@@ -571,6 +669,29 @@ class Ambience {
           for (let i = 0; i < 3; i++) e.burst({ type: 'lowpass', freq: 420, t: t + i * 0.28, d: 0.08, peak: 0.12, send: 1.2, bus: this.out });
         });
         this.every('ding', 40, 80, dt, () => e.ding());
+        break;
+      case 'station':
+        this.every('train', 30, 70, dt, () => e.trainRumble());
+        this.every('melody', 45, 90, dt, () => e.departureMelody());
+        this.every('pa', 20, 45, dt, () => {
+          for (let i = 0; i < 2; i++) e.tone({ type: 'sine', f: i ? 659 : 784, t: t + i * 0.35, d: 0.6, peak: 0.03, send: 1.2, bus: this.out });
+          for (let i = 0; i < 10; i++) e.burst({ type: 'bandpass', freq: 600 + Math.random() * 900, q: 5, t: t + 0.9 + i * 0.14, a: 0.02, d: 0.1, peak: 0.02, send: 1.2, bus: this.out });
+        });
+        break;
+      case 'shrine':
+        // bell crickets (suzumushi) and a koto-like pluck now and then
+        this.every('cricket', 0.8, 2.2, dt, () => {
+          const n = 3 + Math.floor(Math.random() * 4);
+          for (let i = 0; i < n; i++) e.tone({ type: 'sine', f: 4100 + Math.random() * 200, t: t + i * 0.07, a: 0.005, d: 0.05, peak: 0.008, send: 0.5, bus: this.out });
+        });
+        this.every('koto', 4, 9, dt, () => {
+          const scale = [62, 63, 67, 69, 70, 74, 75, 79];
+          const n = scale[Math.floor(Math.random() * scale.length)];
+          e.tone({ type: 'triangle', f: NOTE(n), a: 0.003, d: 1.8, peak: 0.04, send: 0.9, bus: this.out });
+          e.tone({ type: 'sine', f: NOTE(n + 12), a: 0.003, d: 0.6, peak: 0.015, send: 0.9, bus: this.out });
+        });
+        this.every('furin', 12, 25, dt, () => e.tone({ type: 'sine', f: 2637 + Math.random() * 300, a: 0.002, d: 1.5, peak: 0.02, send: 1, bus: this.out }));
+        this.every('bell', 50, 100, dt, () => e.temple());
         break;
       case 'school':
         // evening cicadas: "kana-kana-kana"

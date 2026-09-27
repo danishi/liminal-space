@@ -1,4 +1,4 @@
-import { WATER, WALL } from '../core/grid.js';
+import { WATER, WALL, HOLE } from '../core/grid.js';
 
 const K = 8; // pixels per cell in the exploration canvas
 
@@ -28,7 +28,8 @@ export class MapMemory {
         const c = g.center(i, j);
         if (!g.los(px, pz, c.x, c.z)) continue;
         this.explored[k] = 1;
-        ctx.fillStyle = g.get(i, j) === WATER ? 'rgba(110,190,220,0.45)' : 'rgba(236,230,214,0.2)';
+        const ct = g.get(i, j);
+        ctx.fillStyle = ct === HOLE ? 'rgba(0,0,0,0.9)' : ct === WATER ? 'rgba(110,190,220,0.45)' : g.ramp[k] ? 'rgba(236,230,214,0.4)' : 'rgba(236,230,214,0.2)';
         ctx.fillRect(i * K, j * K, K, K);
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           if (g.get(i + dx, j + dy) === WALL) {
@@ -76,10 +77,7 @@ function arrow(ctx, x, y, r, angle, color) {
 /** Markers visible on the map right now. */
 function markers(world, mem) {
   const out = [];
-  for (const f of world.fragments) {
-    if (world.entities.includes(f) && (f.seen || mem.isExplored(f.pos.x, f.pos.z))) out.push({ x: f.pos.x, z: f.pos.z, kind: 'frag' });
-  }
-  if (world.exit && (world.exit.seen || world.exit.unlocked)) out.push({ x: world.exit.pos.x, z: world.exit.pos.z, kind: 'exit', pin: world.exit.unlocked });
+  for (const d of world.doors) if (d.seen) out.push({ x: d.pos.x, z: d.pos.z, kind: 'exit' });
   for (const p of world.npcMarkers) if (mem.isExplored(p.x, p.z)) out.push({ x: p.x, z: p.z, kind: 'npc' });
   return out;
 }

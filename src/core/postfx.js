@@ -4,6 +4,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 
 // Final "camcorder" pass: grain, vignette, chromatic aberration, scanlines
 // and a fear-driven wobble. Runs after tone mapping, in display space.
@@ -72,10 +73,15 @@ export class PostFX {
     this.renderer = renderer;
     this.composer = new EffectComposer(renderer);
     this.renderPass = new RenderPass(scene, camera);
+    this.gtao = new GTAOPass(scene, camera, 512, 512);
+    this.gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
+    this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 10 });
+    this.gtao.blendIntensity = 0.9;
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.6, 0.85);
     this.output = new OutputPass();
     this.tape = new ShaderPass(TapeShader);
     this.composer.addPass(this.renderPass);
+    this.composer.addPass(this.gtao);
     this.composer.addPass(this.bloom);
     this.composer.addPass(this.output);
     this.composer.addPass(this.tape);
@@ -86,6 +92,8 @@ export class PostFX {
   setScene(scene, camera) {
     this.renderPass.scene = scene;
     this.renderPass.camera = camera;
+    this.gtao.scene = scene;
+    this.gtao.camera = camera;
   }
 
   setSize(w, h, pr) {
@@ -95,8 +103,10 @@ export class PostFX {
     this.u.uRes.value.set(w * pr, h * pr);
   }
 
-  configure({ bloom = 0.4, bloomThreshold = 0.85, bloomRadius = 0.5, grain = 0.05, vignette = 0.35, chroma = 0.0015, scan = 0.03, tint = [1, 1, 1] } = {}, bloomEnabled = true) {
+  configure({ bloom = 0.4, bloomThreshold = 0.85, bloomRadius = 0.5, grain = 0.05, vignette = 0.35, chroma = 0.0015, scan = 0.03, tint = [1, 1, 1] } = {}, bloomEnabled = true, ao = 0) {
     this.bloom.enabled = bloomEnabled && bloom > 0;
+    this.gtao.enabled = ao > 0;
+    this.gtao.blendIntensity = ao;
     this.bloom.strength = bloom;
     this.bloom.threshold = bloomThreshold;
     this.bloom.radius = bloomRadius;

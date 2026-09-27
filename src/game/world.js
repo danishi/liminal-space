@@ -1,62 +1,95 @@
 import * as THREE from 'three';
 import { RNG } from '../core/rng.js';
-import { wallMounts, WATER } from '../core/grid.js';
-import { Fragment } from '../entities/fragment.js';
-import { ExitDoor } from '../entities/exitdoor.js';
+import { wallMounts, WATER, HOLE, DIRS } from '../core/grid.js';
+import { DriftDoor } from '../entities/door.js';
+
+const STEP_UP = 0.55;
 
 /**
- * A built stage: geometry, collision, entities and objective state.
- * Stage modules fill it in through build(world).
+ * A built level: geometry, collision, residents, apparitions and the doors
+ * that lead elsewhere. Stage modules fill it in through build(world).
+ *
+ * "Unease" rises with drift depth (how many levels you've passed through)
+ * and with distance from where you arrived; stages use it to add clutter,
+ * break lights and let stranger things appear.
  */
 export class World {
-  constructor(game, stage, seed, { attract = false, lights = 6 } = {}) {
-    this.lightCount = lights;
+  constructor(game, stage, { seed = (Math.random() * 1e9) | 0, depth = 0, attract = false, lights = 6, stages = [] } = {}) {
     this.game = game;
     this.stage = stage;
+    this.stages = stages;
     this.seed = seed;
     this.rng = new RNG(seed);
+    this.depth = depth;
     this.attract = attract;
+    this.lightCount = lights;
     this.root = new THREE.Group();
     this.entities = [];
     this.interactables = [];
-    this.boxes = [];
     this.boxHash = new Map();
     this.circles = [];
-    this.fragments = [];
-    this.collected = 0;
-    this.exit = null;
+    this.doors = [];
     this.lightPool = null;
     this.spawn = { x: 0, z: 0, yaw: 0 };
     this.npcMarkers = [];
+    this.animated = [];
     this.env = {
       background: 0x000000,
       fog: null,
       exposure: 1,
+      toneMapping: undefined,
       postfx: {},
+      ao: 1,
+      envIntensity: 0.6,
       ambience: null,
       reverb: [1.5, 3],
-      flashlight: false, // available?
+      flashlight: false,
       flashlightOn: false,
       flashlightIntensity: 30,
-      darkness: 0, // 0..1, drains sanity when the flashlight is off
-      sanityRegen: 1,
       shadows: false,
+      height: 2.7,
     };
     this.floorFn = null;
     this.speedFn = null;
     this.surfaceFn = null;
     this.onUpdate = null;
     this.onDispose = [];
+    this.distFromSpawn = null;
+    this.maxDist = 1;
+    // levels last a few minutes, a little shorter the deeper you drift
+    this.duration = this.rng.float(170, 300) * Math.max(0.65, 1 - depth * 0.04);
+    this.timeLeft = this.duration;
 
     stage.build(this);
-    this.distFromSpawn = this.grid.distances(...this.grid.cellOf(this.spawn.x, this.spawn.z));
-    if (!stage.customObjectives) this.placeObjectives();
+    if (!this.distFromSpawn) this.finalizeLayout();
+    if (!attract) this.placeDoors(stage.doorCount ?? 2);
+  }
+
+  /** Call after carving the grid: seals pockets and computes distances. */
+  finalizeLayout() {
+    const [si, sj] = this.grid.cellOf(this.spawn.x, this.spawn.z);
+    this.distFromSpawn = this.grid.sealUnreachable(si, sj);
+    let max = 1;
+    for (let k = 0; k < this.distFromSpawn.length; k++) if (this.distFromSpawn[k] > max) max = this.distFromSpawn[k];
+    this.maxDist = max;
+  }
+
+  /** 0 (calm) .. ~1.5 (deeply wrong) for a cell. */
+  unease(i, j) {
+    const d = this.distFromSpawn ? this.distFromSpawn[j * this.grid.w + i] : 0;
+    const frac = d > 0 ? d / this.maxDist : 0;
+    return Math.min(1.5, this.depth * 0.12 + frac * 0.55 + (this.stage.baseUnease || 0));
+  }
+
+  uneaseAt(x, z) {
+    const [i, j] = this.grid.cellOf(x, z);
+    return this.grid.inBounds(i, j) ? this.unease(i, j) : 0;
   }
 
   // ---- queries used by the player ----------------------------------------
 
   floorAt(x, z) {
-    return this.floorFn ? this.floorFn(x, z) : 0;
+    return this.floorFn ? this.floorFn(x, z) : this.grid.floorAt(x, z);
   }
 
   speedAt(x, z) {
@@ -78,9 +111,8 @@ export class World {
 
   // ---- collision -----------------------------------------------------------
 
-  addBox(x0, z0, x1, z1) {
-    const b = { x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1) };
-    this.boxes.push(b);
+  addBox(x0, z0, x1, z1, y0 = -Infinity, y1 = Infinity) {
+    const b = { x0: Math.min(x0, x1), z0: Math.min(z0, z1), x1: Math.max(x0, x1), z1: Math.max(z0, z1), y0, y1 };
     const cs = this.grid.cs;
     for (let j = Math.floor(b.z0 / cs); j <= Math.floor(b.z1 / cs); j++) {
       for (let i = Math.floor(b.x0 / cs); i <= Math.floor(b.x1 / cs); i++) {
@@ -92,11 +124,11 @@ export class World {
     return b;
   }
 
-  /** Axis-aligned box collider for a rotated footprint (w × d, yaw multiple of 90°). */
   addFootprint(x, z, w, d, yaw = 0) {
-    const swap = Math.abs(Math.sin(yaw)) > 0.5;
-    const hw = (swap ? d : w) / 2;
-    const hd = (swap ? w : d) / 2;
+    const c = Math.abs(Math.cos(yaw));
+    const s = Math.abs(Math.sin(yaw));
+    const hw = (w * c + d * s) / 2;
+    const hd = (w * s + d * c) / 2;
     return this.addBox(x - hw, z - hd, x + hw, z + hd);
   }
 
@@ -106,7 +138,11 @@ export class World {
     return c;
   }
 
-  collide(pos, r) {
+  /**
+   * Pushes a circle at `pos` out of walls, props and ledges too high to step
+   * onto from feet height `feetY`.
+   */
+  collide(pos, r, feetY = null) {
     const g = this.grid;
     const cs = g.cs;
     for (let iter = 0; iter < 2; iter++) {
@@ -116,9 +152,21 @@ export class World {
         for (let di = -1; di <= 1; di++) {
           const i = ci + di;
           const j = cj + dj;
-          if (g.solid(i, j)) pushOutBox(pos, r, i * cs, j * cs, (i + 1) * cs, (j + 1) * cs);
+          let block = g.solid(i, j);
+          if (!block && feetY !== null && (di || dj) && g.get(i, j) !== HOLE) {
+            // a ledge is a wall if its nearest floor point is too high
+            const px = Math.max(i * cs + 0.01, Math.min(pos.x, (i + 1) * cs - 0.01));
+            const pz = Math.max(j * cs + 0.01, Math.min(pos.z, (j + 1) * cs - 0.01));
+            block = this.floorAt(px, pz) > feetY + STEP_UP;
+          }
+          if (block) pushOutBox(pos, r, i * cs, j * cs, (i + 1) * cs, (j + 1) * cs);
           const list = this.boxHash.get(`${i},${j}`);
-          if (list) for (const b of list) pushOutBox(pos, r, b.x0, b.z0, b.x1, b.z1);
+          if (list) {
+            for (const b of list) {
+              if (feetY !== null && (feetY > b.y1 || feetY + 1.7 < b.y0)) continue;
+              pushOutBox(pos, r, b.x0, b.z0, b.x1, b.z1);
+            }
+          }
         }
       }
       for (const c of this.circles) {
@@ -133,13 +181,6 @@ export class World {
         }
       }
     }
-  }
-
-  /** Is a world point blocked by walls or props (for spawning and AI)? */
-  blocked(x, z, r = 0.3) {
-    const p = { x, z };
-    this.collide(p, r);
-    return Math.hypot(p.x - x, p.z - z) > 0.01;
   }
 
   // ---- entities ------------------------------------------------------------
@@ -158,19 +199,15 @@ export class World {
     entity.dispose?.();
   }
 
-  // ---- objectives ----------------------------------------------------------
-
-  /** Picks walkable cells far from spawn and from each other. */
+  /** Walkable cells far from spawn and from each other. */
   pickFarCells(n, { minFrac = 0.35, spacing = 6, avoid = [], filter = null } = {}) {
     const g = this.grid;
     const d = this.distFromSpawn;
-    let max = 0;
-    for (let k = 0; k < d.length; k++) if (d[k] > max) max = d[k];
     const candidates = [];
     for (let j = 0; j < g.h; j++) {
       for (let i = 0; i < g.w; i++) {
         const k = j * g.w + i;
-        if (d[k] < max * minFrac) continue;
+        if (d[k] < this.maxDist * minFrac) continue;
         if (filter && !filter(i, j)) continue;
         candidates.push([i, j]);
       }
@@ -189,40 +226,45 @@ export class World {
     return chosen;
   }
 
-  placeObjectives() {
+  // ---- doors elsewhere -------------------------------------------------------
+
+  placeDoors(n) {
     const g = this.grid;
     const d = this.distFromSpawn;
-    // exit: the reachable wall mount farthest from spawn (with some randomness)
-    const mounts = wallMounts(g, (c, i, j) => d[j * g.w + i] > 0 && c !== WATER && g.countSolidNeighbors(i, j) <= 2);
-    mounts.sort((a, b) => d[b.j * g.w + b.i] - d[a.j * g.w + a.i]);
-    const top = mounts.slice(0, Math.max(1, Math.floor(mounts.length * 0.05)));
-    const mount = this.stage.pickExitMount ? this.stage.pickExitMount(this, mounts) : this.rng.pick(top);
-    if (mount) {
-      this.exit = this.add(new ExitDoor(this, mount, this.stage.makeExit(this)));
+    const used = this.usedMounts || new Set();
+    const mounts = wallMounts(g, (c, i, j) => d[j * g.w + i] > this.maxDist * 0.3 && c !== WATER && g.countSolidNeighbors(i, j) <= 2)
+      .filter((m) => !used.has(`${m.i},${m.j},${m.nx},${m.nz}`) && !this.blockedMount(m));
+    this.rng.shuffle(mounts);
+    const chosen = [];
+    for (const m of mounts) {
+      if (chosen.length >= n) break;
+      if (chosen.some((c) => Math.abs(c.i - m.i) + Math.abs(c.j - m.j) < (g.w + g.h) / 5)) continue;
+      chosen.push(m);
     }
-    const avoid = mount ? [[mount.i, mount.j]] : [];
-    const cells = this.pickFarCells(3, {
-      minFrac: 0.3,
-      spacing: Math.floor((g.w + g.h) / 6),
-      avoid: [...avoid, ...this.npcMarkers.map((m) => g.cellOf(m.x, m.z))],
-      filter: (i, j) => g.get(i, j) !== WATER || this.stage.fragmentsInWater,
+    let others = this.stages.map((_, i) => i).filter((i) => this.stages[i] !== this.stage);
+    if (!others.length) others = [Math.max(0, this.stages.indexOf(this.stage))];
+    this.rng.shuffle(others);
+    chosen.forEach((m, k) => {
+      used.add(`${m.i},${m.j},${m.nx},${m.nz}`);
+      const dest = others[k % Math.max(1, others.length)];
+      const model = this.stage.makeDoor(this, this.stages[dest]);
+      this.doors.push(this.add(new DriftDoor(this, m, model, dest)));
     });
-    const memories = this.stage.memories || [];
-    cells.forEach(([i, j], n) => {
-      const c = g.center(i, j);
-      const y = this.floorAt(c.x, c.z) + 1.1;
-      this.fragments.push(this.add(new Fragment(this, new THREE.Vector3(c.x, y, c.z), this.stage.fragmentColor || 0xfff2a8, memories[n] || '')));
-    });
+    this.usedMounts = used;
   }
 
-  collect(fragment) {
-    this.collected++;
-    this.remove(fragment);
-    if (this.collected >= this.fragments.length && this.exit) this.exit.unlock();
+  /** A door needs clear floor in front of it. */
+  blockedMount(m) {
+    const cx = m.x + m.nx * 0.9;
+    const cz = m.z + m.nz * 0.9;
+    const list = this.boxHash.get(`${Math.floor(cx / this.grid.cs)},${Math.floor(cz / this.grid.cs)}`);
+    if (!list) return false;
+    return list.some((b) => cx > b.x0 - 0.6 && cx < b.x1 + 0.6 && cz > b.z0 - 0.6 && cz < b.z1 + 0.6);
   }
 
   update(dt, ctx) {
     for (const e of this.entities) e.update?.(dt, ctx);
+    for (const a of this.animated) a(dt, ctx);
     this.onUpdate?.(dt, ctx);
     if (this.lightPool) this.lightPool.update(dt, ctx.t, ctx.camera.position);
   }
@@ -235,7 +277,7 @@ export class World {
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
-          for (const key of ['map', 'emissiveMap', 'alphaMap']) {
+          for (const key of ['map', 'emissiveMap', 'alphaMap', 'normalMap', 'roughnessMap']) {
             const t = m[key];
             if (t && !t.userData.cached) t.dispose();
           }
@@ -243,7 +285,6 @@ export class World {
         }
       }
     });
-    if (this.lightPool) for (const l of this.lightPool.lights) l.parent?.remove(l);
     this.root.parent?.remove(this.root);
   }
 }
@@ -260,7 +301,6 @@ function pushOutBox(pos, r, x0, z0, x1, z1) {
     pos.x += (dx / d) * (r - d);
     pos.z += (dz / d) * (r - d);
   } else {
-    // centre inside the box: push out along the shallowest axis
     const pl = pos.x - x0 + r;
     const pr = x1 - pos.x + r;
     const pt = pos.z - z0 + r;
@@ -272,3 +312,5 @@ function pushOutBox(pos, r, x0, z0, x1, z1) {
     else pos.z += pb;
   }
 }
+
+export { DIRS };

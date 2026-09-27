@@ -1,15 +1,17 @@
 import * as THREE from 'three';
-import { Grid, FLOOR, WALL, wallMounts, DIRS } from '../core/grid.js';
-import { hotelCarpet, hotelWallpaper, wood, plainNoise, hotelDoor, labelTexture } from '../core/textures.js';
-import { buildShell, glow } from './common.js';
+import { Grid, FLOOR, WALL, HOLE, DIRS, wallMounts } from '../core/grid.js';
+import { carpetHotel, wallpaperDamask, woodPanel, paint, pbr } from '../core/surfaces.js';
+import { hotelDoor, labelTexture } from '../core/textures.js';
+import { buildShell, glow, decorate } from './common.js';
 import { LightPool } from '../core/lights.js';
-import { Smiler } from '../entities/creatures.js';
+import { PropKit } from '../props/kit.js';
+import * as P from '../props/library.js';
+import { Watcher, Grin } from '../entities/creatures.js';
 import { NPC } from '../entities/npc.js';
 
-const H = 2.6;
+const H = 2.7;
 
 function carveMaze(g, rng) {
-  // recursive backtracker on odd coordinates
   const stack = [[1, 1]];
   g.set(1, 1, FLOOR);
   while (stack.length) {
@@ -26,10 +28,9 @@ function carveMaze(g, rng) {
     g.set(x, y, FLOOR);
     stack.push([x, y]);
   }
-  // braid: open most dead ends so there are loops to escape through
   for (let j = 1; j < g.h - 1; j += 2) {
     for (let i = 1; i < g.w - 1; i += 2) {
-      if (g.countSolidNeighbors(i, j) < 3 || !rng.chance(0.65)) continue;
+      if (g.countSolidNeighbors(i, j) < 3 || !rng.chance(0.55)) continue;
       const opts = DIRS.filter(([dx, dy]) => {
         const wi = i + dx;
         const wj = j + dy;
@@ -45,7 +46,7 @@ function carveMaze(g, rng) {
 
 function bellboyModel() {
   const g = new THREE.Group();
-  const ghost = (color) => new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.55, emissive: 0x5f7cff, emissiveIntensity: 0.35, roughness: 0.6, depthWrite: false });
+  const ghost = (color) => new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.6, emissive: 0x5f7cff, emissiveIntensity: 0.35, roughness: 0.6, depthWrite: false });
   const red = ghost(0x8a2432);
   const dark = ghost(0x25283a);
   const skin = ghost(0xb9c4e8);
@@ -67,202 +68,174 @@ function bellboyModel() {
     arm.position.set(x, 1.1, 0.05);
     g.add(arm);
   }
-  const buttons = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.5, 0.01), new THREE.MeshBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0.8 }));
-  buttons.position.set(0, 1.12, 0.22);
-  g.add(buttons);
   const halo = glow(0x8fa6ff, 2.4, 0.25);
   halo.position.y = 1.1;
   g.add(halo);
   return g;
 }
 
-function sconce() {
+function sconce(kit) {
   const g = new THREE.Group();
-  const brass = new THREE.MeshStandardMaterial({ color: 0x8a6a2e, metalness: 0.8, roughness: 0.35 });
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.03), brass);
-  g.add(plate);
-  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), brass);
-  arm.rotation.x = Math.PI / 2;
-  arm.position.set(0, 0, 0.08);
-  g.add(arm);
+  const brass = kit.std(0x8a6a2e, 0.35, 0.8);
+  kit.box(g, 0.12, 0.22, 0.03, brass, 0, 0, 0.015);
+  kit.cyl(g, 0.012, 0.012, 0.16, brass, 0, 0, 0.08, Math.PI / 2);
   const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 0.16, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0xf2d9a6, emissive: 0xffb45a, emissiveIntensity: 1.4, side: THREE.DoubleSide, roughness: 0.9 }));
   shade.position.set(0, 0.08, 0.16);
+  shade.userData.keep = true;
   g.add(shade);
   g.userData.shade = shade;
   return g;
 }
 
-function elevatorModel() {
-  const group = new THREE.Group();
-  const brass = new THREE.MeshStandardMaterial({ color: 0x9b7a3a, metalness: 0.85, roughness: 0.3 });
-  const steel = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 0.9, roughness: 0.35 });
+function elevatorFrame(kit, open = true) {
+  const g = new THREE.Group();
+  const brass = kit.std(0x9b7a3a, 0.3, 0.85);
+  const steel = kit.std(0x9aa0a6, 0.35, 0.9);
   const W = 1.3;
   const HH = 2.2;
-  const frame = [
-    [0.12, HH + 0.12, -W / 2 - 0.06, (HH + 0.12) / 2],
-    [0.12, HH + 0.12, W / 2 + 0.06, (HH + 0.12) / 2],
-  ];
-  for (const [w, h, x, y] of frame) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.1), brass);
-    m.position.set(x, y, 0.05);
-    group.add(m);
-  }
-  const top = new THREE.Mesh(new THREE.BoxGeometry(W + 0.24, 0.12, 0.1), brass);
-  top.position.set(0, HH + 0.06, 0.05);
-  group.add(top);
-  const insideMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.06, 0.05, 0.04) });
-  const inside = new THREE.Mesh(new THREE.PlaneGeometry(W, HH), insideMat);
-  inside.position.set(0, HH / 2, 0.01);
-  group.add(inside);
-  const doors = [];
-  for (const s of [-1, 1]) {
-    const d = new THREE.Mesh(new THREE.BoxGeometry(W / 2, HH, 0.04), steel);
-    d.position.set((s * W) / 4, HH / 2, 0.04);
-    group.add(d);
-    doors.push({ mesh: d, s });
-  }
-  // floor indicator
-  const indMat = new THREE.MeshBasicMaterial({ map: labelTexture('▼ B', { w: 128, h: 48, bg: '#1a0e05', fg: '#ffb347', font: '30px "DotGothic16", monospace' }) });
-  indMat.color.setScalar(0.3);
-  const ind = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.15), indMat);
-  ind.position.set(0, HH + 0.3, 0.06);
-  group.add(ind);
-  const btnMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.2, 0.08) });
-  const btn = new THREE.Mesh(new THREE.CircleGeometry(0.04, 16), btnMat);
-  btn.position.set(W / 2 + 0.3, 1.15, 0.03);
-  group.add(btn);
-  const light = glow(0xffe2b0, 3, 0);
-  light.position.set(0, 1.2, 0.5);
-  group.add(light);
-  let open = 0;
-  return {
-    group,
-    update(dt, time, unlocked) {
-      if (!unlocked) return;
-      indMat.color.setScalar(1.6);
-      btnMat.color.setRGB(2.2, 1.5, 0.6);
-      open = Math.min(1, open + dt * 0.45);
-      for (const d of doors) d.mesh.position.x = (d.s * W) / 4 + d.s * open * (W / 2 - 0.02);
-      insideMat.color.setRGB(0.06 + open * 1.7, 0.05 + open * 1.45, 0.04 + open * 1.1);
-      light.material.opacity = open * 0.6;
-    },
-  };
+  kit.box(g, 0.12, HH + 0.12, 0.1, brass, -W / 2 - 0.06, (HH + 0.12) / 2, 0.05);
+  kit.box(g, 0.12, HH + 0.12, 0.1, brass, W / 2 + 0.06, (HH + 0.12) / 2, 0.05);
+  kit.box(g, W + 0.24, 0.12, 0.1, brass, 0, HH + 0.06, 0.05);
+  for (const s of [-1, 1]) kit.box(g, W / 2, HH, 0.04, steel, s * (W / 4 + (open ? W / 2 - 0.05 : 0)), HH / 2, 0.02);
+  kit.plane(g, 0.4, 0.15, kit.tex('elevInd', labelTexture('— —', { w: 128, h: 48, bg: '#1a0e05', fg: '#ff6a30', font: '30px "DotGothic16", monospace' })), 0, HH + 0.3, 0.06);
+  return g;
 }
 
 export default {
   id: 'hotel',
   code: 'LEVEL 11',
-  name: '深夜のホテル',
-  en: 'The Endless Hotel',
-  tags: ['ダーク', '不気味'],
-  danger: 3,
-  art: { c1: '#3b1216', c2: '#07080a', c3: '#b98a3e' },
-  desc: '赤い絨毯の廊下が、どこまでも曲がり続ける。明かりの消えた部屋の奥で、何かが笑っている。',
-  goal: '記憶の欠片を 3 つ集め、動いているエレベーターを探す。',
-  tip: '暗闇では正気が削れる。F で懐中電灯。笑う顔には光を当て続けろ。',
-  fragmentColor: 0xffc98a,
-  memories: ['修学旅行の夜、消灯後の旅館の廊下', '真夜中の自動販売機の、白くて冷たい光', '誰かが廊下の向こうで、ずっとノックしていた音'],
-  clearLine: 'エレベーターが静かに下りていく。表示はずっと「B」のままだった。',
+  name: 'The Night Hotel',
+  sub: 'Red carpet, no guests',
+  tint: 0xffc080,
 
   build(world) {
     const rng = world.rng;
-    const W = 31;
-    const cs = 2.3;
+    const W = 29;
+    const cs = 2.6;
     const g = (world.grid = new Grid(W, W, cs, WALL));
     carveMaze(g, rng);
-    // a few small lobbies
+    const lobbies = [];
     for (let r = 0; r < 4; r++) {
-      const i = rng.int(2, W - 6) | 1;
-      const j = rng.int(2, W - 6) | 1;
-      g.fillRect(i, j, Math.min(W - 2, i + 2), Math.min(W - 2, j + 2), FLOOR);
+      const i = rng.int(3, W - 7) | 1;
+      const j = rng.int(3, W - 7) | 1;
+      g.fillRect(i, j, Math.min(W - 2, i + 3), Math.min(W - 2, j + 3), FLOOR);
+      lobbies.push({ i, j });
     }
+    // one sunken lobby with steps down
+    const sunk = lobbies[0];
+    g.heightRect(sunk.i + 1, sunk.j + 1, sunk.i + 2, sunk.j + 2, -0.9);
+    g.setRamp(sunk.i + 1, sunk.j, 3, -0.9, 0.9);
+    g.setRamp(sunk.i + 2, sunk.j + 3, 2, -0.9, 0.9);
     const si = 1;
     const sj = 1;
-    g.sealUnreachable(si, sj);
     const sp = g.center(si, sj);
     world.spawn = { x: sp.x, z: sp.z, yaw: g.walkable(2, 1) ? -Math.PI / 2 : Math.PI };
+    world.finalizeLayout();
+    // open elevator shafts at a few dead ends
+    const deadEnds = g.openCells().filter(([i, j]) => g.countSolidNeighbors(i, j) === 3 && world.distFromSpawn[j * W + i] > 6);
+    rng.shuffle(deadEnds);
+    const shafts = deadEnds.slice(0, 1 + Math.min(4, world.depth));
+    for (const [i, j] of shafts) g.set(i, j, HOLE);
 
-    const wallMat = new THREE.MeshStandardMaterial({ map: hotelWallpaper(), roughness: 0.85 });
-    const woodMat = new THREE.MeshStandardMaterial({ map: wood('hotel-wood', [70, 38, 24]), roughness: 0.55 });
-    const railMat = new THREE.MeshStandardMaterial({ color: 0x5a3421, roughness: 0.45 });
+    const wallMat = pbr(wallpaperDamask(), { normalScale: 0.6 });
+    const woodMat = pbr(woodPanel('s-hotel-wood', [72, 40, 24], 0.3), { normalScale: 0.5 });
+    const railMat = pbr(paint('s-hotel-rail', [92, 54, 34], { rough: 0.35 }));
+    const carpet = pbr(carpetHotel(), { normalScale: 1 });
     buildShell(world, {
       height: H,
       wall: { mat: wallMat, u: 2.2, v: 2.2 },
-      floor: { mat: new THREE.MeshStandardMaterial({ map: hotelCarpet(), roughness: 1 }), uv: 2.2 },
-      ceil: { mat: new THREE.MeshStandardMaterial({ map: plainNoise('hotel-ceil', [150, 136, 112], 0.1), roughness: 1 }), uv: 3 },
+      floor: { mat: carpet, uv: 2.2 },
+      ceilMat: { mat: pbr(paint('s-hotel-ceil', [168, 152, 126], { rough: 0.9 })), uv: 3 },
+      stairs: carpet,
+      riserMat: woodMat,
       trims: [
-        { mat: woodMat, y0: 0, y1: 0.95, inset: 0.02, u: 1, v: 1, top: true },
-        { mat: railMat, y0: 0.93, y1: 1.02, inset: 0.035, top: true },
+        { mat: woodMat, y0: 0, y1: 0.95, inset: 0.02, u: 1, v: 1 },
+        { mat: railMat, y0: 0.93, y1: 1.02, inset: 0.035 },
         { mat: railMat, y0: H - 0.12, y1: H, inset: 0.03 },
       ],
     });
-    world.root.add(new THREE.HemisphereLight(0x3a2f36, 0x120808, 0.35));
+    world.root.add(new THREE.HemisphereLight(0x6a5048, 0x1a1010, 0.65));
+
+    const kit = new PropKit(world);
+    // elevator frames in front of the shafts
+    const used = (world.usedMounts = new Set());
+    for (const [i, j] of shafts) {
+      const dir = DIRS.find(([dx, dy]) => g.standable(i + dx, j + dy));
+      if (!dir) continue;
+      const [dx, dy] = dir;
+      const c = g.center(i, j);
+      const x = c.x + dx * cs * 0.5;
+      const z = c.z + dy * cs * 0.5;
+      const f = elevatorFrame(kit);
+      kit.add(f, x, z, Math.atan2(dx, dy), { y: g.heightOf(i + dx, j + dy) });
+    }
 
     // room doors along the corridors
-    const mounts = rng.shuffle(wallMounts(g));
-    const used = (world.usedMounts = new Set());
-    const doorCells = new Set();
+    const doorCells = [];
     let number = 101;
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x2b1a10, roughness: 0.6 });
-    for (const m of mounts) {
-      if (doorCells.size >= 44) break;
-      const key = `${m.i},${m.j}`;
-      if (doorCells.has(key) || [...doorCells].some((k) => { const [a, b] = k.split(',').map(Number); return Math.abs(a - m.i) + Math.abs(b - m.j) < 2; })) continue;
-      if (!rng.chance(0.5)) continue;
-      doorCells.add(key);
+    const frameMat = kit.std(0x2b1a10, 0.5);
+    for (const m of rng.shuffle(wallMounts(g))) {
+      if (doorCells.length >= 50) break;
+      if (doorCells.some(([a, b]) => Math.abs(a - m.i) + Math.abs(b - m.j) < 2) || !rng.chance(0.55)) continue;
+      doorCells.push([m.i, m.j]);
       used.add(`${m.i},${m.j},${m.nx},${m.nz}`);
-      const door = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 2.1), new THREE.MeshStandardMaterial({ map: hotelDoor(number), roughness: 0.6 }));
+      const u = world.unease(m.i, m.j);
+      const ajar = rng.chance(Math.max(0, u - 0.4) * 0.6);
+      const grp = new THREE.Group();
+      kit.box(grp, 1.1, 2.2, 0.03, frameMat, 0, 1.1, 0.03);
+      if (ajar) kit.plane(grp, 0.95, 2.1, kit.std(0x000000, 1), 0, 1.05, 0.047);
+      const door = kit.plane(grp, 0.95, 2.1, new THREE.MeshStandardMaterial({ map: hotelDoor(number), roughness: 0.45 }), ajar ? -0.3 : 0, 1.05, ajar ? 0.4 : 0.05, 0, ajar ? -1.0 : 0, 0);
+      void door;
       number += rng.int(1, 3);
       if (number % 100 > 40) number = (Math.floor(number / 100) + 1) * 100 + 1;
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.2, 0.03), frameMat);
-      const grp = new THREE.Group();
-      frame.position.set(0, 1.1, 0.03);
-      door.position.set(0, 1.05, 0.05);
-      grp.add(frame, door);
-      grp.position.set(m.x, 0, m.z);
-      grp.rotation.y = Math.atan2(m.nx, m.nz);
-      world.root.add(grp);
+      kit.add(grp, m.x, m.z, Math.atan2(m.nx, m.nz), { y: m.y });
     }
 
     // wall sconces, managed by a light pool
-    const pool = new LightPool(world.root, world.lightCount, { color: 0xffb060, intensity: 3.2, distance: 7, decay: 1.7 });
+    const pool = new LightPool(world.root, world.lightCount, { color: 0xffb566, intensity: 7, distance: 9, decay: 1.5 });
     world.lightPool = pool;
-    const sconceCells = new Set();
     const shades = [];
+    const sconceCells = [];
     for (const m of rng.shuffle(wallMounts(g))) {
-      const key = `${m.i},${m.j}`;
-      if (sconceCells.has(key) || used.has(`${m.i},${m.j},${m.nx},${m.nz}`)) continue;
-      if ([...sconceCells].some((k) => { const [a, b] = k.split(',').map(Number); return Math.abs(a - m.i) + Math.abs(b - m.j) < 3; })) continue;
-      sconceCells.add(key);
+      if (used.has(`${m.i},${m.j},${m.nx},${m.nz}`)) continue;
+      if (sconceCells.some(([a, b]) => Math.abs(a - m.i) + Math.abs(b - m.j) < 2)) continue;
+      sconceCells.push([m.i, m.j]);
       used.add(`${m.i},${m.j},${m.nx},${m.nz}`);
-      const s = sconce();
-      s.position.set(m.x + m.nx * 0.02, 1.85, m.z + m.nz * 0.02);
-      s.rotation.y = Math.atan2(m.nx, m.nz);
-      world.root.add(s);
-      const dead = rng.chance(0.4);
-      const fx = pool.add({
-        pos: new THREE.Vector3(m.x + m.nx * 0.35, 2.1, m.z + m.nz * 0.35),
-        flicker: !dead && rng.chance(0.25) ? rng.float(0.05, 0.3) : 0,
-        dead,
-      });
+      const s = sconce(kit);
+      kit.add(s, m.x + m.nx * 0.02, m.z + m.nz * 0.02, Math.atan2(m.nx, m.nz), { y: m.y + 1.85 });
+      const u = world.unease(m.i, m.j);
+      const dead = rng.chance(0.12 + u * 0.3);
+      const fx = pool.add({ pos: new THREE.Vector3(m.x + m.nx * 0.35, m.y + 2.1, m.z + m.nz * 0.35), flicker: !dead && rng.chance(0.15 + u * 0.3) ? rng.float(0.05, 0.3) : 0, dead });
       shades.push({ mat: s.userData.shade.material, fx });
       if (dead) s.userData.shade.material.emissiveIntensity = 0.02;
     }
 
+    decorate(world, kit, {
+      density: { wall: 0.12, high: 0.16, floor: 0.05, clutter: 0.07, ceil: 0 },
+      keepClear: (i, j) => g.ramp[j * W + i] > 0,
+      wall: [
+        { p: P.vaseTable, w: 3 }, { p: P.armchair, w: 2 }, { p: P.iceMachine, w: 0.8 }, { p: P.grandfatherClock, w: 1 },
+        { p: P.extinguisher, w: 1 }, { p: P.armchair, w: 1, min: 0.8, o: { eerie: true } }, { p: P.vaseTable, w: 1.5, min: 0.7, o: { eerie: true } },
+      ],
+      high: [{ p: P.painting, w: 3 }, { p: P.painting, w: 2, min: 0.55, o: { eerie: true } }, { p: P.wallClock, w: 0.6 }],
+      floor: [{ p: P.roomServiceCart, w: 2 }, { p: P.luggageCart, w: 1 }, { p: P.roomServiceCart, w: 1, min: 0.7, o: { eerie: true } }],
+      clutter: [{ p: P.suitcase, w: 2 }, { p: P.paperScatter, w: 1, min: 0.5 }, { p: P.lostShoe, w: 1, min: 0.6 }],
+    });
+    kit.finish();
+
     Object.assign(world.env, {
-      background: 0x020202,
-      fog: new THREE.FogExp2(0x030203, 0.085),
-      exposure: 1.15,
-      postfx: { bloom: 0.5, bloomThreshold: 0.7, bloomRadius: 0.5, grain: 0.1, vignette: 0.55, chroma: 0.0025, scan: 0.045, tint: [1.05, 0.95, 0.9] },
+      background: 0x080606,
+      fog: new THREE.FogExp2(0x0a0808, 0.05 + world.depth * 0.004),
+      exposure: 1.35,
+      postfx: { bloom: 0.45, bloomThreshold: 0.72, bloomRadius: 0.5, grain: 0.08, vignette: 0.45, chroma: 0.0022, scan: 0.04, tint: [1.05, 0.96, 0.9] },
+      ao: 1,
+      envIntensity: 0.35,
       ambience: 'hotel',
       reverb: [1.4, 3.5],
       flashlight: true,
       flashlightOn: true,
-      flashlightIntensity: 42,
-      flashlightDistance: 20,
-      batteryDrain: 0.8,
-      darkness: 1,
-      sanityRegen: 0.4,
+      flashlightIntensity: 60,
+      flashlightDistance: 24,
     });
     world.surfaceFn = () => 'carpet';
     world.onUpdate = () => {
@@ -270,59 +243,58 @@ export default {
     };
 
     // resident: the night bellboy, waiting near the start
-    const d = g.distances(si, sj);
-    const near = g.openCells().filter(([i, j]) => {
-      const k = d[j * W + i];
-      return k >= 3 && k <= 6;
-    });
+    const d = world.distFromSpawn;
+    const near = g.openCells().filter(([i, j]) => d[j * W + i] >= 3 && d[j * W + i] <= 6 && !g.ramp[j * W + i]);
     if (near.length) {
       const [i, j] = rng.pick(near);
       const c = g.center(i, j);
       const model = bellboyModel();
-      model.position.set(c.x, 0, c.z);
+      model.position.set(c.x, g.heightOf(i, j), c.z);
+      const baseY = model.position.y;
       const npc = new NPC(world, {
-        name: 'ベルボーイ',
+        name: 'the bellboy',
         pos: model.position.clone(),
         model,
         voice: 0.9,
         radius: 0.35,
         conversations: [
-          [
-            '……いらっしゃいませ。ご予約のお客様でしょうか。',
-            '当館は現在、深夜営業のみとなっております。お足元が暗いので、懐中電灯をお使いください。',
-            '記憶の欠片は、廊下のどこかに。そろいましたら、エレベーターが動きだします。',
-          ],
-          [
-            'ひとつ、ご忠告を。',
-            '暗がりで笑っている方がいらっしゃいます。あの方は、見られている間は動けません。',
-            '光を当て続ければ、恥ずかしがってお帰りになります。電池の残りにはお気をつけて。',
-          ],
-          ['当館のご利用、まことにありがとうございます。……チェックアウトは、いつでも結構ですよ。'],
+          ['...Welcome. Do you have a reservation?', 'We only operate at night now. The halls are dim, so please use your light. F, I believe.', 'Some elevators have no car behind their doors. Do mind the gap.'],
+          ['There is a guest who smiles in the dark.', 'Shine your light on them and they will excuse themselves. They are quite shy.'],
+          ['Thank you for staying with us. ...Checkout is whenever you like.'],
         ],
       });
-      npc.idle = (dt) => {
-        model.position.y = 0.05 + Math.sin(npc.t * 1.4) * 0.04;
+      npc.idle = () => {
+        model.position.y = baseY + 0.05 + Math.sin(npc.t * 1.4) * 0.04;
       };
       world.add(npc);
     }
 
     if (!world.attract) {
-      let max = 0;
-      for (let k = 0; k < d.length; k++) max = Math.max(max, d[k]);
-      const far = [];
-      for (let k = 0; k < d.length; k++) if (d[k] > max * 0.6) far.push([k % W, (k / W) | 0]);
-      world.add(new Smiler(world, rng.pick(far), { grace: 35 }));
+      world.add(new Grin(world));
+      world.add(new Watcher(world, { look: { hat: true, body: 0x0a0808 } }));
     }
   },
 
-  pickExitMount(world, mounts) {
-    const free = mounts.filter((m) => !world.usedMounts.has(`${m.i},${m.j},${m.nx},${m.nz}`));
-    return free[Math.floor(world.rng.next() * Math.max(1, Math.floor(free.length * 0.05)))] || mounts[0];
-  },
-
-  makeExit(world) {
-    const model = elevatorModel();
-    model.onUnlock = () => world.game.audio.ding();
-    return model;
+  makeDoor(world, dest) {
+    const group = new THREE.Group();
+    const kit = new PropKit(world);
+    const f = elevatorFrame(kit, false);
+    group.add(f);
+    const doors = f.children.filter((c) => c.geometry?.parameters?.depth === 0.04);
+    const inside = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.2), new THREE.MeshBasicMaterial({ color: new THREE.Color(dest.tint || 0xffe2b0) }));
+    inside.position.set(0, 1.1, 0.005);
+    group.add(inside);
+    const light = glow(dest.tint || 0xffe2b0, 3, 0);
+    light.position.set(0, 1.2, 0.5);
+    group.add(light);
+    const base = doors.map((d) => d.position.x);
+    return {
+      group,
+      update(dt, t, open) {
+        doors.forEach((d, k) => (d.position.x = base[k] + Math.sign(base[k]) * open * 0.62));
+        inside.material.color.set(dest.tint || 0xffe2b0).multiplyScalar(0.1 + open * 2.2);
+        light.material.opacity = open * 0.6;
+      },
+    };
   },
 };

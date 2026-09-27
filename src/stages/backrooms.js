@@ -1,17 +1,19 @@
 import * as THREE from 'three';
-import { Grid, FLOOR, WALL } from '../core/grid.js';
-import { backroomsWall, backroomsCarpet, backroomsCeiling, exitSign } from '../core/textures.js';
-import { buildShell, ceilingFixtures, doorModel, glow } from './common.js';
-import { Wanderer } from '../entities/creatures.js';
+import { Grid, FLOOR, WALL, HOLE } from '../core/grid.js';
+import { wallpaperYellow, carpetTan, ceilingTile, pbr, paint } from '../core/surfaces.js';
+import { exitSign } from '../core/textures.js';
+import { buildShell, ceilingFixtures, doorModel, glow, decorate, stairRun } from './common.js';
+import { PropKit } from '../props/kit.js';
+import * as P from '../props/library.js';
+import { Watcher, Follower } from '../entities/creatures.js';
 import { NPC, mat } from '../entities/npc.js';
 
 const H = 2.7;
 
-function survivorModel() {
+function drifterModel() {
   const g = new THREE.Group();
   const suit = mat(0xc4611f);
   const dark = mat(0x2a2a28);
-  // sitting against the wall: torso, head with gas mask, bent legs
   const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.4, 4, 8), suit);
   torso.position.set(0, 0.62, -0.05);
   torso.rotation.x = -0.15;
@@ -42,7 +44,6 @@ function survivorModel() {
     arm.rotation.x = -0.6;
     g.add(arm);
   }
-  // little lantern
   const lantern = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.16, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 1.7, 0.9) }));
   lantern.position.set(0.42, 0.08, 0.35);
   g.add(lantern);
@@ -52,19 +53,56 @@ function survivorModel() {
   return g;
 }
 
+function phoneModel() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.1, 0.2), new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.3 }));
+  body.position.y = 0.05;
+  g.add(body);
+  const hand = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.18, 4, 8), new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.3 }));
+  hand.rotation.z = Math.PI / 2;
+  hand.position.y = 0.13;
+  g.add(hand);
+  return g;
+}
+
+/** Lowers a rectangle of floor and gives it one staircase down. */
+function sunken(g, rng, depth, near) {
+  for (let tries = 0; tries < 30; tries++) {
+    const w = rng.int(4, 7);
+    const h = rng.int(4, 7);
+    const i0 = rng.int(3, g.w - w - 4);
+    const j0 = rng.int(3, g.h - h - 4);
+    if (Math.abs(i0 + w / 2 - near[0]) < w / 2 + 4 && Math.abs(j0 + h / 2 - near[1]) < h / 2 + 4) continue;
+    for (let j = j0; j < j0 + h; j++) for (let i = i0; i < i0 + w; i++) if (g.get(i, j) === FLOOR) g.setHeight(i, j, -depth);
+    // stairs: a run of ramp cells leaving the room through one side
+    const side = rng.int(0, 3);
+    const steps = depth > 1.5 ? 2 : 1;
+    const rise = depth / steps;
+    let si;
+    let sj;
+    let dir;
+    if (side === 0) { si = i0 + w - steps; sj = j0 + rng.int(1, h - 2); dir = 0; }
+    else if (side === 1) { si = i0 + steps - 1; sj = j0 + rng.int(1, h - 2); dir = 1; }
+    else if (side === 2) { si = i0 + rng.int(1, w - 2); sj = j0 + h - steps; dir = 2; }
+    else { si = i0 + rng.int(1, w - 2); sj = j0 + steps - 1; dir = 3; }
+    const [dx, dy] = [[1, 0], [-1, 0], [0, 1], [0, -1]][dir];
+    for (let s = 0; s < steps; s++) {
+      g.set(si + dx * s, sj + dy * s, FLOOR);
+      g.setRamp(si + dx * s, sj + dy * s, dir, -depth + rise * s, rise);
+    }
+    // keep the landing at the top clear
+    g.set(si + dx * steps, sj + dy * steps, FLOOR);
+    g.setHeight(si + dx * steps, sj + dy * steps, 0);
+    return;
+  }
+}
+
 export default {
   id: 'backrooms',
   code: 'LEVEL 0',
-  name: '黄色い部屋',
-  en: 'The Backrooms',
-  tags: ['無機質', '不穏'],
-  danger: 2,
-  art: { c1: '#b9a24c', c2: '#4b4221', c3: '#fff3b0' },
-  desc: '湿ったカーペットと蛍光灯の唸り。どこまでも同じ黄色い部屋が続く。',
-  goal: '記憶の欠片を 3 つ集め、緑に灯る EXIT を探す。',
-  tip: '走ると足音で「何か」に気づかれる。蛍光灯のちらつきは接近の合図。',
-  fragmentColor: 0xfff0a0,
-  memories: ['夏休みの、誰もいない学習塾の廊下', '引っ越し前日の、家具のない部屋', '閉店後のショッピングモールで聞いた館内放送'],
+  name: 'The Backrooms',
+  sub: 'Endless yellow rooms',
+  tint: 0xfff0b0,
 
   build(world) {
     const rng = world.rng;
@@ -72,7 +110,6 @@ export default {
     const cs = 2.6;
     const g = (world.grid = new Grid(W, W, cs, FLOOR));
     g.border();
-    // scattered wall segments give the "random office partition" feel
     for (let s = 0; s < 190; s++) {
       const i = rng.int(1, W - 2);
       const j = rng.int(1, W - 2);
@@ -80,7 +117,6 @@ export default {
       const len = rng.int(2, 7);
       for (let k = 0; k < len; k++) g.set(horiz ? i + k : i, horiz ? j : j + k, WALL);
     }
-    // a few pillar halls
     for (let r = 0; r < 4; r++) {
       const i0 = rng.int(2, W - 10);
       const j0 = rng.int(2, W - 10);
@@ -92,108 +128,165 @@ export default {
     const si = W >> 1;
     const sj = W >> 1;
     g.fillRect(si - 1, sj - 1, si + 1, sj + 1, FLOOR);
-    g.sealUnreachable(si, sj);
+    // verticality: sunken rooms (one floor down or a half level) and raised decks
+    const nSunken = 2 + Math.min(3, world.depth);
+    for (let n = 0; n < nSunken; n++) sunken(g, rng, rng.pick([1.2, 2.7]), [si, sj]);
+    for (let n = 0; n < 2; n++) {
+      const i0 = rng.int(3, W - 9);
+      const j0 = rng.int(3, W - 9);
+      if (Math.abs(i0 - si) < 6 && Math.abs(j0 - sj) < 6) continue;
+      for (let j = j0; j < j0 + 4; j++) for (let i = i0; i < i0 + 5; i++) if (g.get(i, j) === FLOOR && g.heightOf(i, j) === 0) g.setHeight(i, j, 0.9);
+      stairRun(g, i0 - 1, j0 + 1, 0, 1, 0, 0.9);
+      g.set(i0 - 1, j0 + 1, FLOOR);
+    }
     const sp = g.center(si, sj);
     world.spawn = { x: sp.x, z: sp.z, yaw: rng.float(0, Math.PI * 2) };
+    world.finalizeLayout();
 
-    const wallMat = new THREE.MeshStandardMaterial({ map: backroomsWall(), roughness: 0.92 });
-    const floorMat = new THREE.MeshStandardMaterial({ map: backroomsCarpet(), roughness: 1 });
-    const ceilMat = new THREE.MeshStandardMaterial({ map: backroomsCeiling(), roughness: 0.95 });
-    const baseMat = new THREE.MeshStandardMaterial({ color: 0x8c7a3c, roughness: 0.8 });
+    // holes in the carpet appear further out, and more of them the deeper you are
+    const holes = 1 + world.depth * 2;
+    const far = world.pickFarCells(holes, { minFrac: 0.45, spacing: 5, filter: (i, j) => g.get(i, j) === FLOOR && !g.ramp[j * W + i] && g.countSolidNeighbors(i, j) === 0 });
+    for (const [i, j] of far) g.set(i, j, HOLE);
+
+    const wallMat = pbr(wallpaperYellow(), { normalScale: 0.6 });
+    const floorMat = pbr(carpetTan(), { normalScale: 1.2 });
+    const ceilMat = pbr(ceilingTile(), { normalScale: 0.8 });
+    const baseMat = pbr(paint('s-br-base', [140, 122, 60], { rough: 0.5 }));
     buildShell(world, {
       height: H,
       wall: { mat: wallMat, u: 2.7, v: 2.7 },
-      floor: { mat: floorMat, uv: 3 },
-      ceil: { mat: ceilMat, uv: 1.2 },
-      trims: [{ mat: baseMat, y0: 0, y1: 0.1, inset: 0.012, top: true }],
+      floor: { mat: floorMat, uv: 2.4 },
+      ceilMat: { mat: ceilMat, uv: 1.2 },
+      stairs: floorMat,
+      trims: [{ mat: baseMat, y0: 0, y1: 0.1, inset: 0.012 }],
     });
-    world.root.add(new THREE.HemisphereLight(0xfff0b8, 0x5d5025, 0.75));
-    ceilingFixtures(world, { every: 2, offset: 1, y: H - 0.02, color: 0xfff1c0, intensity: 5.5, distance: 11, flicker: 0.1, dead: 0.07, rotate: true });
+    world.root.add(new THREE.HemisphereLight(0xfff0b8, 0x5d5025, 0.35));
+    ceilingFixtures(world, {
+      type: 'rect', every: 2, offset: 1, size: [1.2, 0.6], color: 0xfff1c8, intensity: 9, distance: 11,
+      flicker: 0.08, dead: 0.05, rotate: true, housing: new THREE.MeshStandardMaterial({ color: 0xd8d2bd, roughness: 0.5 }),
+    });
+
+    const kit = new PropKit(world);
+    decorate(world, kit, {
+      density: { wall: 0.14, high: 0.14, floor: 0.07, clutter: 0.1, ceil: 0.06 },
+      wall: [
+        { p: P.cardboardBoxes, w: 3 }, { p: P.filingCabinet, w: 2 }, { p: P.waterCooler, w: 1 }, { p: P.extinguisher, w: 1 },
+        { p: P.mattress, w: 1, min: 0.3 }, { p: P.stepLadder, w: 1 }, { p: P.fakeDoor, w: 1.2, min: 0.45 }, { p: P.tvStatic, w: 1, min: 0.65 },
+      ],
+      high: [
+        { p: P.outlet, w: 3 }, { p: P.wallVent, w: 2 }, { p: P.wallClock, w: 1 }, { p: P.poster, w: 1, min: 0.3 },
+        { p: P.painting, w: 1, min: 0.55 }, { p: P.handprints, w: 1.5, min: 0.8 },
+      ],
+      floor: [{ p: P.officeChair, w: 3 }, { p: P.wetFloorSign, w: 1 }, { p: P.chairPile, w: 1.2, min: 0.6 }],
+      clutter: [
+        { p: P.paperScatter, w: 3 }, { p: P.bottles, w: 2 }, { p: P.trafficCone, w: 1 }, { p: P.crtMonitor, w: 1, min: 0.2 }, { p: P.puddle, w: 2 },
+      ],
+      ceil: [{ p: P.missingTile, w: 2 }, { p: P.hangingWires, w: 1, min: 0.35 }, { p: P.upsideChair, w: 0.6, min: 0.9 }],
+    });
+    kit.finish();
 
     Object.assign(world.env, {
       background: 0x5c5431,
-      fog: new THREE.FogExp2(0x6b6238, 0.048),
-      exposure: 1.05,
-      postfx: { bloom: 0.35, bloomThreshold: 0.92, grain: 0.07, vignette: 0.42, chroma: 0.002, scan: 0.035, tint: [1.03, 1, 0.9] },
+      fog: new THREE.FogExp2(0x6b6238, 0.04 + world.depth * 0.004),
+      exposure: 1.15,
+      postfx: { bloom: 0.3, bloomThreshold: 0.9, grain: 0.06, vignette: 0.4, chroma: 0.0018, scan: 0.03, tint: [1.03, 1, 0.9] },
+      ao: 1,
+      envIntensity: 0.45,
       ambience: 'hum',
       reverb: [1.1, 4],
-      sanityRegen: 0.6,
     });
     world.surfaceFn = () => 'carpet';
 
-    // resident: a survivor resting against a wall, not far from spawn
-    const d = g.distances(si, sj);
+    // resident
+    const d = world.distFromSpawn;
     const spots = [];
     for (let j = 1; j < W - 1; j++) {
       for (let i = 1; i < W - 1; i++) {
         const k = d[j * W + i];
-        if (k < 6 || k > 13) continue;
-        if (g.get(i, j - 1) === WALL && g.walkable(i, j + 1)) spots.push([i, j]);
+        if (k < 5 || k > 12 || g.heightOf(i, j) !== 0) continue;
+        if (g.get(i, j - 1) === WALL && g.standable(i, j + 1)) spots.push([i, j]);
       }
     }
     if (spots.length) {
       const [i, j] = rng.pick(spots);
       const c = g.center(i, j);
-      const model = survivorModel();
+      const model = drifterModel();
       model.position.set(c.x, 0, j * cs + 0.35);
-      const npc = new NPC(world, {
-        name: '放浪者',
+      world.add(new NPC(world, {
+        name: 'the Drifter',
         pos: model.position.clone(),
         model,
         voice: 0.8,
         face: false,
         conversations: [
           [
-            '……驚いた。まだ正気の人間がいたとはね。',
-            'ここはレベル 0。どこまで歩いても、同じ黄色い部屋が続いてる。',
-            '出たいなら「記憶の欠片」を 3 つ探しな。天井まで伸びる光の柱が目印だ。',
-            '欠片がそろえば、どこかの壁で緑の EXIT が灯る。',
+            '...Huh. Someone who still has their wits about them.',
+            'This is Level 0. Walk as far as you like, it is the same yellow room the whole way.',
+            'There are doors that hum. Walk through one and you end up somewhere else. So do the holes in the floor, only faster.',
           ],
           [
-            'それと、走るな。',
-            '足音を聞きつけて、背の高い「あれ」が来る。蛍光灯がちらついたら近くにいる合図だ。',
-            '見つかったら角を曲がれ。視界から外れれば、そのうち諦める。',
+            'The further you wander from where you woke up, the worse it gets. More junk. Fewer lights.',
+            'And the tall one stands at the ends of hallways. It never comes closer. I think it just wants to be seen.',
           ],
-          ['俺はここで少し休むよ。……もう何日目かも分からないけどな。'],
+          ['I will rest here a while. ...Lost count of the days, honestly.'],
         ],
-      });
-      world.add(npc);
+      }));
     }
 
+    // a phone ringing somewhere far away
     if (!world.attract) {
-      const far = [];
-      let max = 0;
-      for (let k = 0; k < d.length; k++) max = Math.max(max, d[k]);
-      for (let k = 0; k < d.length; k++) if (d[k] > max * 0.55) far.push([k % W, (k / W) | 0]);
-      const w = new Wanderer(world, rng.pick(far), { grace: 25 });
-      w.onChase = () => {
-        world.game.audio.stinger();
-        world.game.toast('何かに見つかった', '角を曲がって視界から外れろ', 'danger');
-      };
-      world.add(w);
+      const [cell] = world.pickFarCells(1, { minFrac: 0.5, filter: (i, j) => g.get(i, j) === FLOOR && !g.ramp[j * W + i] });
+      if (cell) {
+        const c = g.center(...cell);
+        const model = phoneModel();
+        model.position.set(c.x, g.heightOf(...cell), c.z);
+        const phone = new NPC(world, {
+          name: 'the phone',
+          pos: model.position.clone(),
+          model,
+          radius: 0,
+          face: false,
+          marker: false,
+          prompt: 'Pick up the phone',
+          conversations: [
+            ['(static)', '...hello? Is someone there? I can hear you breathing.', 'Don’t go down the stairs. Every time I go down, the rooms get— (the line goes dead)'],
+            ['(only a dial tone)'],
+          ],
+        });
+        phone.aimHeight = 0.1;
+        let ring = 3;
+        phone.idle = (dt, ctx) => {
+          if (phone.talkIndex > 0 || ctx.attract) return;
+          ring -= dt;
+          const dd = ctx.player.pos.distanceTo(model.position);
+          if (ring <= 0 && dd < 22) {
+            ring = 4;
+            if (!phone.panner && ctx.game.audio.ready) phone.panner = ctx.game.audio.panner(model.position.x, model.position.y, model.position.z, { ref: 2, rolloff: 1 });
+            if (phone.panner) ctx.game.audio.phoneRing(phone.panner);
+          }
+        };
+        world.add(phone);
+      }
+      world.add(new Watcher(world, { look: {} }));
+      if (world.depth >= 1) world.add(new Follower(world));
     }
   },
 
-  makeExit() {
+  makeDoor(world, dest) {
     return doorModel({
       doorColor: 0x55614f,
       frameColor: 0x3c3a30,
-      lightColor: 0xe9fff0,
+      lightColor: dest.tint || 0xffffff,
       extras(group) {
         const signMat = new THREE.MeshBasicMaterial({ map: exitSign() });
-        signMat.color.setScalar(0.25);
+        signMat.color.setScalar(1.6);
         const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.225), signMat);
         sign.position.set(0, 2.38, 0.05);
         group.add(sign);
-        const g = glow(0x7dffb0, 1.6, 0);
+        const g = glow(0x7dffb0, 1.4, 0.35);
         g.position.set(0, 2.38, 0.2);
         group.add(g);
-        return (open, time) => {
-          signMat.color.setScalar(0.25 + open * 1.9 + Math.sin(time * 3) * 0.05 * open);
-          g.material.opacity = open * 0.7;
-        };
       },
     });
   },
-
 };

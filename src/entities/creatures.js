@@ -1,30 +1,27 @@
 import * as THREE from 'three';
 import { smilerFace, glowSprite } from '../core/textures.js';
 
+// Apparitions: things you glimpse, never things that hurt you. They appear
+// more often and closer as unease grows.
+
 const _v = new THREE.Vector3();
+const _f = new THREE.Vector3();
 
 /** Moves an object along BFS paths over the stage grid. */
-class GridMover {
+export class GridMover {
   constructor(world, obj, radius = 0.35) {
     this.world = world;
     this.obj = obj;
     this.radius = radius;
     this.path = null;
-    this.goal = null;
-  }
-
-  cell() {
-    return this.world.grid.cellOf(this.obj.position.x, this.obj.position.z);
   }
 
   setGoal(i, j) {
-    const [ci, cj] = this.cell();
-    this.goal = [i, j];
+    const [ci, cj] = this.world.grid.cellOf(this.obj.position.x, this.obj.position.z);
     this.path = this.world.grid.path(ci, cj, i, j);
     return !!this.path;
   }
 
-  /** Advance along the path; returns true once the goal is reached. */
   step(dt, speed) {
     if (!this.path) return true;
     const g = this.world.grid;
@@ -33,8 +30,7 @@ class GridMover {
       const c = g.center(i, j);
       const dx = c.x - this.obj.position.x;
       const dz = c.z - this.obj.position.z;
-      const d = Math.hypot(dx, dz);
-      if (d < 0.25) {
+      if (Math.hypot(dx, dz) < 0.25) {
         this.path.shift();
         continue;
       }
@@ -49,22 +45,20 @@ class GridMover {
     const dx = x - p.x;
     const dz = z - p.z;
     const d = Math.hypot(dx, dz);
-    if (d < 1e-4) return 0;
+    if (d < 1e-4) return;
     const s = Math.min(d, speed * dt);
     p.x += (dx / d) * s;
     p.z += (dz / d) * s;
-    this.world.collide(p, this.radius);
-    // turn to face movement direction
+    p.y = this.world.floorAt(p.x, p.z);
     const yaw = Math.atan2(dx, dz);
     let diff = yaw - this.obj.rotation.y;
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     this.obj.rotation.y += diff * Math.min(1, dt * 8);
-    return s;
   }
 }
 
-/** A far walkable cell that the player can't currently see. */
-function farHiddenCell(world, player, minCells, maxCells = 999) {
+/** A cell at a given distance range that the player cannot currently see. */
+export function hiddenCell(world, player, minCells, maxCells = 999, { visible = false } = {}) {
   const g = world.grid;
   const [pi, pj] = g.cellOf(player.pos.x, player.pos.z);
   const d = g.distances(pi, pj);
@@ -74,20 +68,24 @@ function farHiddenCell(world, player, minCells, maxCells = 999) {
       const k = d[j * g.w + i];
       if (k < minCells || k > maxCells) continue;
       const c = g.center(i, j);
-      if (g.los(player.pos.x, player.pos.z, c.x, c.z)) continue;
+      if (g.los(player.pos.x, player.pos.z, c.x, c.z) !== visible) continue;
       cands.push([i, j]);
     }
-  }
-  if (!cands.length) {
-    // fall back to anything reachable
-    for (let k = 0; k < d.length; k++) if (d[k] > minCells / 2) cands.push([k % g.w, (k / g.w) | 0]);
   }
   return cands.length ? world.rng.pick(cands) : null;
 }
 
+/** Is a world point inside the camera's view cone (ignores walls)? */
+function inView(camera, x, y, z, slack = 0.85) {
+  _v.set(x - camera.position.x, y - camera.position.y, z - camera.position.z).normalize();
+  camera.getWorldDirection(_f);
+  const half = THREE.MathUtils.degToRad(camera.fov * 0.5) * Math.max(1, camera.aspect) * slack;
+  return _f.dot(_v) > Math.cos(Math.min(1.3, half));
+}
+
 // ---------------------------------------------------------------------------
 
-function tallFigure({ body = 0x070707, eyes = 0xffffff, height = 2.45, hat = false, coat = false }) {
+export function tallFigure({ body = 0x070707, eyes = 0xffffff, height = 2.45, hat = false, coat = false, suit = false } = {}) {
   const g = new THREE.Group();
   const m = new THREE.MeshStandardMaterial({ color: body, roughness: 1, metalness: 0 });
   const s = height / 2.45;
@@ -99,6 +97,11 @@ function tallFigure({ body = 0x070707, eyes = 0xffffff, height = 2.45, hat = fal
     const c = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.34, 0.9, 10), m);
     c.position.y = 1.05 * s;
     g.add(c);
+  }
+  if (suit) {
+    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.42), m);
+    bag.position.set(0.3, 0.75 * s, 0);
+    g.add(bag);
   }
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), m);
   head.scale.set(0.9, 1.35, 0.95);
@@ -112,7 +115,7 @@ function tallFigure({ body = 0x070707, eyes = 0xffffff, height = 2.45, hat = fal
     crown.position.y = 2.45 * s;
     g.add(crown);
   }
-  const eyeMat = new THREE.MeshBasicMaterial({ color: eyes });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: eyes, transparent: true });
   eyeMat.color.multiplyScalar(2.5);
   for (const x of [-0.05, 0.05]) {
     const e = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), eyeMat);
@@ -135,317 +138,126 @@ function tallFigure({ body = 0x070707, eyes = 0xffffff, height = 2.45, hat = fal
   const legR = limb(0.95 * s, 0.06);
   legR.position.set(0.1, 1.1 * s, 0);
   g.add(armL, armR, legL, legR);
-  g.userData = { head, armL, armR, legL, legR, torso };
+  g.userData = { head, armL, armR, legL, legR, mat: m, eyeMat };
   return g;
 }
 
 /**
- * A hunting creature. Roams, listens for running footsteps, and chases on
- * sight. Breaking line of sight for a few seconds makes it lose track.
+ * The Watcher: a tall figure that appears at the edge of sight, stands still
+ * and stares. Approach it and it turns away down a corridor; wait too long
+ * and it simply isn't there any more.
  */
-export class Wanderer {
-  constructor(world, cell, opts = {}) {
+export class Watcher {
+  constructor(world, opts = {}) {
     this.world = world;
-    this.hostile = true;
-    this.name = opts.name || '徘徊者';
-    this.catchTitle = opts.catchTitle || '徘徊者に捕まった';
-    this.catchLine = opts.catchLine || '黄色い光の中で、長い腕が肩に触れた。';
-    this.speeds = { roam: 1.3, investigate: 2.4, chase: 4.25, ...(opts.speeds || {}) };
-    this.sight = opts.sight || 20;
-    this.graceTime = opts.grace ?? 20;
-    this.disturbLights = opts.disturbLights ?? true;
+    this.presence = 0;
+    this.opts = opts;
     this.object = tallFigure(opts.look || {});
-    const c = world.grid.center(...cell);
-    this.object.position.set(c.x, 0, c.z);
-    this.mover = new GridMover(world, this.object, 0.35);
-    this.state = 'roam';
-    this.stateTime = 0;
-    this.lostTime = 0;
-    this.lastSeen = null;
-    this.repath = 0;
-    this.stepTimer = 0;
-    this.phase = 0;
-    this.threat = 0;
-    this.farTime = 0;
-    this.twitch = 0;
-    this.active = !world.attract;
-    this.panner = null;
-  }
-
-  sees(player, dist) {
-    if (dist > this.sight) return false;
-    const p = this.object.position;
-    if (!this.world.grid.los(p.x, p.z, player.pos.x, player.pos.z)) return false;
-    if (dist < 5) return true;
-    const yaw = this.object.rotation.y;
-    const fx = Math.sin(yaw);
-    const fz = Math.cos(yaw);
-    const dx = (player.pos.x - p.x) / dist;
-    const dz = (player.pos.z - p.z) / dist;
-    return fx * dx + fz * dz > 0.3;
-  }
-
-  setState(s) {
-    if (s === this.state) return;
-    if (s === 'chase' && this.state !== 'chase') this.onChase?.();
-    this.state = s;
-    this.stateTime = 0;
-    this.repath = 0;
-  }
-
-  update(dt, ctx) {
-    const { player, game } = ctx;
-    const p = this.object.position;
-    this.stateTime += dt;
-    this.graceTime -= dt;
-    if (!this.panner && game.audio.ready) this.panner = game.audio.panner(p.x, 1.5, p.z, { ref: 3, rolloff: 1.3 });
-    if (this.panner) game.audio.setPannerPos(this.panner, p.x, 1.6, p.z);
-
-    const dx = player.pos.x - p.x;
-    const dz = player.pos.z - p.z;
-    const dist = Math.hypot(dx, dz);
-    let speed = 0;
-
-    if (this.active && this.graceTime <= 0 && !ctx.attract) {
-      const seen = this.sees(player, dist);
-      if (seen) {
-        this.lastSeen = { x: player.pos.x, z: player.pos.z };
-        this.lostTime = 0;
-        this.setState('chase');
-      } else if (this.state === 'chase') {
-        this.lostTime += dt;
-        if (this.lostTime > 4) this.setState('investigate');
-      }
-      // hearing
-      if (this.state !== 'chase') {
-        const hear = player.noise >= 1 ? 16 : player.noise > 0 ? 4.5 : 0;
-        if (dist < hear) {
-          this.lastSeen = { x: player.pos.x, z: player.pos.z };
-          if (this.state !== 'investigate') this.setState('investigate');
-          this.repath = 0;
-        }
-      }
-
-      if (this.state === 'chase') {
-        speed = this.speeds.chase;
-        if (seen && dist < 9) {
-          this.mover.path = null;
-          this.mover.moveToward(player.pos.x, player.pos.z, speed, dt);
-        } else {
-          this.repath -= dt;
-          if (this.repath <= 0) {
-            this.repath = 0.4;
-            this.mover.setGoal(...this.world.grid.cellOf(this.lastSeen.x, this.lastSeen.z));
-          }
-          this.mover.step(dt, speed);
-        }
-        if (dist < 0.85) game.caught(this);
-      } else if (this.state === 'investigate') {
-        speed = this.speeds.investigate;
-        if (this.repath <= 0 && this.lastSeen) {
-          this.repath = 99;
-          this.mover.setGoal(...this.world.grid.cellOf(this.lastSeen.x, this.lastSeen.z));
-        }
-        if (this.mover.step(dt, speed) || this.stateTime > 14) this.setState('roam');
-      } else {
-        speed = this.speeds.roam;
-        if (!this.mover.path || !this.mover.path.length || this.stateTime > 25) {
-          // roam, drifting towards the player's general area
-          const g = this.world.grid;
-          const [pi, pj] = g.cellOf(player.pos.x, player.pos.z);
-          let target = null;
-          for (let k = 0; k < 20 && !target; k++) {
-            const i = pi + this.world.rng.int(-12, 12);
-            const j = pj + this.world.rng.int(-12, 12);
-            if (g.walkable(i, j)) target = [i, j];
-          }
-          if (target) this.mover.setGoal(...target);
-          this.stateTime = 0;
-        }
-        this.mover.step(dt, speed);
-      }
-
-      // keep the pressure on: if it's been far away for long, relocate
-      if (dist > 40 && this.state === 'roam') {
-        this.farTime += dt;
-        if (this.farTime > 25) {
-          this.farTime = 0;
-          const c = farHiddenCell(this.world, player, 12, 20);
-          if (c) {
-            const w = this.world.grid.center(...c);
-            p.set(w.x, 0, w.z);
-            this.mover.path = null;
-          }
-        }
-      } else this.farTime = 0;
-    } else if (ctx.attract || !this.active) {
-      // idle sway only
-    }
-
-    p.y = this.world.floorAt(p.x, p.z);
-
-    // animation
-    const moving = speed > 0 && (this.mover.path?.length || this.state === 'chase');
-    this.phase += dt * (moving ? speed * 2.4 : 0.5);
-    const u = this.object.userData;
-    const swing = moving ? Math.sin(this.phase) * 0.6 : Math.sin(this.phase) * 0.05;
-    u.legL.rotation.x = swing;
-    u.legR.rotation.x = -swing;
-    u.armL.rotation.x = -swing * 0.5 + (this.state === 'chase' ? -0.9 : 0);
-    u.armR.rotation.x = swing * 0.5 + (this.state === 'chase' ? -0.9 : 0);
-    this.twitch -= dt;
-    if (this.twitch <= 0) {
-      this.twitch = 0.3 + Math.random() * 2;
-      u.head.rotation.z = (Math.random() - 0.5) * 0.9;
-      u.head.rotation.x = (Math.random() - 0.5) * 0.4;
-    }
-
-    // footsteps
-    if (moving && this.panner) {
-      this.stepTimer -= dt;
-      if (this.stepTimer <= 0) {
-        this.stepTimer = Math.PI / (speed * 2.4);
-        game.audio.thump(this.panner, this.state === 'chase' ? 1 : 0.5);
-      }
-    }
-
-    if (this.disturbLights && this.world.lightPool) this.world.lightPool.setDisturbance(p, 7);
-
-    const t = this.state === 'chase' ? 1 - dist / 30 : 0.6 * (1 - dist / 12);
-    this.threat = ctx.attract ? 0 : Math.max(0, Math.min(1, t));
-  }
-
-  dispose() {
-    this.panner?.disconnect();
-  }
-}
-
-// ---------------------------------------------------------------------------
-
-/**
- * Only a grin in the dark. It moves only while you are not looking at it,
- * and retreats when held in the flashlight beam.
- */
-export class Smiler {
-  constructor(world, cell, opts = {}) {
-    this.world = world;
-    this.hostile = true;
-    this.name = '笑うもの';
-    this.catchTitle = '暗闇が笑った';
-    this.catchLine = '目を離したほんの一瞬、白い歯がすぐ目の前にあった。';
-    this.object = new THREE.Group();
-    const c = world.grid.center(...cell);
-    this.object.position.set(c.x, 0, c.z);
-
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshBasicMaterial({ color: 0x000000 }));
-    body.position.y = 1.55;
-    body.scale.set(1, 1.3, 0.6);
-    this.object.add(body);
-    const faceMat = new THREE.MeshBasicMaterial({ map: smilerFace(), transparent: true, depthWrite: false, fog: false });
-    faceMat.color.setRGB(1.8, 1.7, 1.55);
-    this.face = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), faceMat);
-    this.face.position.y = 1.62;
-    this.object.add(this.face);
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowSprite(), color: 0xfff1d6, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    glow.scale.setScalar(2.2);
-    glow.position.y = 1.6;
-    this.object.add(glow);
-
+    this.object.visible = false;
     this.mover = new GridMover(world, this.object, 0.3);
-    this.grace = opts.grace ?? 30;
-    this.exposure = 0;
-    this.hiddenTime = 0;
-    this.repath = 0;
-    this.giggleTimer = 4;
-    this.threat = 0;
-    this.blink = 0;
+    this.state = 'hidden';
+    this.timer = world.rng.float(18, 40) / (1 + world.depth * 0.25);
+    this.phase = 0;
+    this.stepTimer = 0;
     this.panner = null;
-    this.speed = opts.speed || 2.3;
+    this.watched = 0;
+    this.fade = 0;
+  }
+
+  setOpacity(a) {
+    const u = this.object.userData;
+    u.mat.transparent = a < 1;
+    u.mat.opacity = a;
+    u.eyeMat.opacity = a;
+    this.object.visible = a > 0.01;
   }
 
   update(dt, ctx) {
     const { player, game, camera } = ctx;
     const p = this.object.position;
-    this.grace -= dt;
-    if (!this.panner && game.audio.ready) this.panner = game.audio.panner(p.x, 1.6, p.z, { ref: 2.5, rolloff: 1.2 });
-    if (this.panner) game.audio.setPannerPos(this.panner, p.x, 1.6, p.z);
+    if (!this.panner && game.audio.ready) this.panner = game.audio.panner(p.x, 1.5, p.z, { ref: 3, rolloff: 1.3 });
+    if (this.panner) game.audio.setPannerPos(this.panner, p.x, p.y + 1.6, p.z);
+    const unease = this.world.uneaseAt(player.pos.x, player.pos.z);
+    const dist = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
 
-    // billboard toward camera (yaw only)
-    this.face.parent.rotation.y = Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
+    if (ctx.attract) {
+      this.presence = 0;
+      return;
+    }
 
-    // blink
-    this.blink -= dt;
-    this.face.scale.y = this.blink < 0.12 && this.blink > 0 ? 0.1 : 1;
-    if (this.blink <= 0) this.blink = 2 + Math.random() * 5;
-
-    if (ctx.attract) return;
-
-    if (this.hiddenTime > 0) {
-      this.hiddenTime -= dt;
-      this.object.visible = false;
-      this.threat = 0;
-      if (this.hiddenTime <= 0) {
-        const c = farHiddenCell(this.world, player, 14, 26);
-        if (c) {
-          const w = this.world.grid.center(...c);
-          p.set(w.x, 0, w.z);
-        }
-        this.object.visible = true;
-        this.mover.path = null;
+    if (this.state === 'hidden') {
+      this.presence = 0;
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        // appear somewhere visible but out of frame, a fair distance away
+        const near = Math.max(4, Math.round(9 - unease * 4));
+        const cell = hiddenCell(this.world, player, near, near + 8, { visible: true });
+        const c = cell && this.world.grid.center(...cell);
+        if (c && !inView(camera, c.x, 1.5, c.z, 1.1)) {
+          p.set(c.x, this.world.floorAt(c.x, c.z), c.z);
+          this.state = 'watching';
+          this.watched = 0;
+          this.fade = 0;
+          this.object.rotation.y = Math.atan2(player.pos.x - p.x, player.pos.z - p.z);
+        } else this.timer = 2;
       }
       return;
     }
 
-    const dx = player.pos.x - p.x;
-    const dz = player.pos.z - p.z;
-    const dist = Math.hypot(dx, dz);
-    const los = this.world.grid.los(player.pos.x, player.pos.z, p.x, p.z);
-    _v.set(p.x - camera.position.x, 1.6 + p.y - camera.position.y, p.z - camera.position.z).normalize();
-    const fwd = camera.getWorldDirection(new THREE.Vector3());
-    const dot = fwd.dot(_v);
-    const halfFov = THREE.MathUtils.degToRad(camera.fov * 0.5) * Math.max(1, camera.aspect) * 0.85;
-    const observed = los && dist < 32 && dot > Math.cos(Math.min(1.3, halfFov));
-    const lit = observed && player.flashlight && dist < 14 && dot > Math.cos(THREE.MathUtils.degToRad(22));
-
-    if (lit) {
-      this.exposure += dt;
-      this.face.material.opacity = 1 - Math.min(0.7, this.exposure / 1.6);
-      if (this.exposure > 1.3) {
-        game.audio.giggle(this.panner);
-        game.toast('光を嫌って、それは消えた', null, 'accent');
-        this.exposure = 0;
-        this.face.material.opacity = 1;
-        this.hiddenTime = 9;
-        return;
+    // face the player while watching
+    if (this.state === 'watching') {
+      this.fade = Math.min(1, this.fade + dt * 2);
+      this.setOpacity(this.fade);
+      const yaw = Math.atan2(player.pos.x - p.x, player.pos.z - p.z);
+      let diff = Math.atan2(Math.sin(yaw - this.object.rotation.y), Math.cos(yaw - this.object.rotation.y));
+      this.object.rotation.y += diff * Math.min(1, dt * 2);
+      const seen = inView(camera, p.x, p.y + 1.5, p.z) && this.world.grid.los(player.pos.x, player.pos.z, p.x, p.z);
+      if (seen) this.watched += dt;
+      if (seen && this.watched < dt * 1.5) {
+        game.audio.stinger();
+        game.pulseStatic(0.25);
       }
-    } else {
-      this.exposure = Math.max(0, this.exposure - dt * 0.5);
-      this.face.material.opacity = 1;
-    }
-
-    if (!observed && this.grace <= 0) {
-      const sp = dist > 16 ? this.speed * 1.5 : this.speed;
-      if (los && dist < 6) {
-        this.mover.path = null;
-        this.mover.moveToward(player.pos.x, player.pos.z, sp, dt);
-      } else {
-        this.repath -= dt;
-        if (this.repath <= 0) {
-          this.repath = 0.6;
-          this.mover.setGoal(...this.world.grid.cellOf(player.pos.x, player.pos.z));
+      this.presence = seen ? Math.max(0.3, 1 - dist / 18) : 0.15;
+      if (dist < 6 || this.watched > 6 + this.world.rng.float(0, 4)) {
+        // walk away around a corner
+        const cell = hiddenCell(this.world, player, 5, 14);
+        if (cell && this.mover.setGoal(...cell)) this.state = 'leaving';
+        else this.state = 'vanish';
+      }
+      if (this.world.lightPool) this.world.lightPool.setDisturbance(p, 6);
+    } else if (this.state === 'leaving') {
+      const done = this.mover.step(dt, this.opts.speed || 1.9);
+      const seen = inView(camera, p.x, p.y + 1.5, p.z) && this.world.grid.los(player.pos.x, player.pos.z, p.x, p.z);
+      this.presence = seen ? 0.35 : 0.1;
+      if (this.panner) {
+        this.stepTimer -= dt;
+        if (this.stepTimer <= 0) {
+          this.stepTimer = 0.55;
+          game.audio.thump(this.panner, 0.35);
         }
-        this.mover.step(dt, sp);
       }
-      this.giggleTimer -= dt;
-      if (this.giggleTimer <= 0 && dist < 16) {
-        this.giggleTimer = 5 + Math.random() * 6;
-        if (dist < 6) game.audio.whisper(this.panner);
-        else game.audio.giggle(this.panner);
+      if (done || (!seen && this.mover.path && this.mover.path.length < 3)) this.state = 'vanish';
+    } else if (this.state === 'vanish') {
+      this.fade -= dt * 3;
+      this.setOpacity(Math.max(0, this.fade));
+      this.presence = 0;
+      if (this.fade <= 0) {
+        this.state = 'hidden';
+        this.timer = this.world.rng.float(25, 70) / (1 + this.world.depth * 0.2 + unease);
+        if (this.world.lightPool) this.world.lightPool.setDisturbance(null);
       }
     }
-    if (dist < 0.9 && this.grace <= 0) game.caught(this);
 
-    this.threat = this.grace > 0 ? 0 : Math.max(0, Math.min(1, 1 - dist / 16)) * (observed ? 1 : 0.8);
+    // animation
+    const moving = this.state === 'leaving';
+    this.phase += dt * (moving ? 4.5 : 0.6);
+    const u = this.object.userData;
+    const swing = moving ? Math.sin(this.phase) * 0.5 : Math.sin(this.phase) * 0.04;
+    u.legL.rotation.x = swing;
+    u.legR.rotation.x = -swing;
+    u.armL.rotation.x = -swing * 0.5;
+    u.armR.rotation.x = swing * 0.5;
+    u.head.rotation.z = this.state === 'watching' ? Math.sin(this.phase * 0.7) * 0.25 : 0;
   }
 
   dispose() {
@@ -453,4 +265,129 @@ export class Smiler {
   }
 }
 
-export { GridMover, farHiddenCell, tallFigure };
+/**
+ * A grin in the dark. It waits in unlit places and fades when light touches
+ * it or you come close.
+ */
+export class Grin {
+  constructor(world, opts = {}) {
+    this.world = world;
+    this.presence = 0;
+    this.object = new THREE.Group();
+    const faceMat = new THREE.MeshBasicMaterial({ map: smilerFace(), transparent: true, depthWrite: false, fog: false, opacity: 0 });
+    faceMat.color.setRGB(1.6, 1.5, 1.4);
+    this.face = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), faceMat);
+    this.face.position.y = 1.6;
+    this.object.add(this.face);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowSprite(), color: 0xfff1d6, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    glow.scale.setScalar(2);
+    glow.position.y = 1.6;
+    this.object.add(glow);
+    this.glow = glow;
+    this.object.visible = false;
+    this.state = 'hidden';
+    this.timer = world.rng.float(20, 45) / (1 + world.depth * 0.25);
+    this.alpha = 0;
+    this.panner = null;
+    this.opts = opts;
+  }
+
+  update(dt, ctx) {
+    const { player, game, camera } = ctx;
+    const p = this.object.position;
+    if (!this.panner && game.audio.ready) this.panner = game.audio.panner(p.x, 1.6, p.z, { ref: 2.5, rolloff: 1.2 });
+    if (this.panner) game.audio.setPannerPos(this.panner, p.x, p.y + 1.6, p.z);
+    this.object.rotation.y = Math.atan2(camera.position.x - p.x, camera.position.z - p.z);
+    if (ctx.attract) return;
+    const dist = Math.hypot(player.pos.x - p.x, player.pos.z - p.z);
+
+    if (this.state === 'hidden') {
+      this.timer -= dt;
+      this.presence = 0;
+      if (this.timer <= 0) {
+        const cell = hiddenCell(this.world, player, 5, 10, { visible: true });
+        const c = cell && this.world.grid.center(...cell);
+        if (c && !inView(camera, c.x, 1.6, c.z, 1.1) && !ctx.game.nearLight(new THREE.Vector3(c.x, 0, c.z), 4)) {
+          p.set(c.x, this.world.floorAt(c.x, c.z), c.z);
+          this.state = 'shown';
+          this.object.visible = true;
+          if (this.panner) game.audio.giggle(this.panner);
+        } else this.timer = 3;
+      }
+    } else if (this.state === 'shown') {
+      this.alpha = Math.min(1, this.alpha + dt * 0.8);
+      const seen = inView(camera, p.x, p.y + 1.6, p.z) && this.world.grid.los(player.pos.x, player.pos.z, p.x, p.z);
+      const lit = seen && player.flashlight && dist < 14 && inView(camera, p.x, p.y + 1.6, p.z, 0.3);
+      this.presence = seen ? Math.max(0.35, 1 - dist / 14) : 0.2;
+      if (lit || dist < 4) {
+        this.state = 'fading';
+        if (this.panner) game.audio.whisper(this.panner);
+      }
+    } else if (this.state === 'fading') {
+      this.alpha -= dt * 1.5;
+      this.presence = 0;
+      if (this.alpha <= 0) {
+        this.alpha = 0;
+        this.state = 'hidden';
+        this.object.visible = false;
+        this.timer = this.world.rng.float(30, 80) / (1 + this.world.depth * 0.2);
+      }
+    }
+    this.face.material.opacity = this.alpha;
+    this.glow.material.opacity = this.alpha * 0.12;
+  }
+
+  dispose() {
+    this.panner?.disconnect();
+  }
+}
+
+/**
+ * Footsteps that follow a little behind you and stop when you turn around.
+ * Audio only; appears once unease is high.
+ */
+export class Follower {
+  constructor(world) {
+    this.world = world;
+    this.presence = 0;
+    this.timer = world.rng.float(10, 30);
+    this.active = 0;
+    this.stepT = 0;
+    this.panner = null;
+    this.lastYaw = 0;
+  }
+
+  update(dt, ctx) {
+    const { player, game } = ctx;
+    if (ctx.attract || !game.audio.ready) return;
+    const unease = this.world.uneaseAt(player.pos.x, player.pos.z);
+    if (unease < 0.6) return;
+    if (!this.panner) this.panner = game.audio.panner(0, 0, 0, { ref: 2, rolloff: 1.4 });
+    const bx = player.pos.x + Math.sin(player.yaw) * 4;
+    const bz = player.pos.z + Math.cos(player.yaw) * 4;
+    game.audio.setPannerPos(this.panner, bx, player.pos.y + 0.2, bz);
+    const turning = Math.abs(player.yaw - this.lastYaw) > dt * 1.2;
+    this.lastYaw = player.yaw;
+    if (this.active > 0) {
+      this.active -= dt;
+      this.presence = 0.25;
+      if (turning || player.speed < 0.5) this.active = 0;
+      this.stepT -= dt;
+      if (this.stepT <= 0 && this.active > 0) {
+        this.stepT = player.running ? 0.36 : 0.52;
+        game.audio.thump(this.panner, 0.18);
+      }
+    } else {
+      this.presence = 0;
+      this.timer -= dt;
+      if (this.timer <= 0 && player.speed > 1) {
+        this.active = this.world.rng.float(4, 9);
+        this.timer = this.world.rng.float(30, 70) / unease;
+      }
+    }
+  }
+
+  dispose() {
+    this.panner?.disconnect();
+  }
+}

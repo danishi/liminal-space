@@ -1,7 +1,6 @@
 // Settings and progress, stored per browser. Storage can be unavailable
 // (private windows, sandboxed frames), so every access is guarded.
-const SETTINGS_KEY = 'liminal-drift.settings.v1';
-const PROGRESS_KEY = 'liminal-drift.progress.v1';
+const SETTINGS_KEY = 'liminal-drift.settings.v2';
 
 export const DEFAULT_SETTINGS = {
   sensitivity: 1,
@@ -14,6 +13,8 @@ export const DEFAULT_SETTINGS = {
   headBob: true,
   reduceEffects: false,
   showFps: false,
+  steer: 0.65,
+  minimap: false,
 };
 
 function read(key) {
@@ -46,18 +47,6 @@ export function loadSettings() {
 
 export function saveSettings(s) {
   write(SETTINGS_KEY, s);
-}
-
-export function loadProgress() {
-  return read(PROGRESS_KEY) || { cleared: {} };
-}
-
-export function recordClear(progress, stageId, time) {
-  const prev = progress.cleared[stageId];
-  const best = prev ? Math.min(prev.best, time) : time;
-  progress.cleared[stageId] = { best, count: (prev?.count || 0) + 1 };
-  write(PROGRESS_KEY, progress);
-  return { best, isRecord: !prev || time < prev.best };
 }
 
 export function formatTime(sec) {
