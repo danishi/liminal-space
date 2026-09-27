@@ -129,10 +129,20 @@ export class Game {
 
   // ---- levels ---------------------------------------------------------------
 
+  /** Levels already visited this run come up less often, so a drift tends to cover them all. */
+  stageWeights() {
+    const visits = STAGES.map(() => 0);
+    for (const i of this.history) visits[i]++;
+    return visits.map((n) => 1 / (1 + n * 3));
+  }
+
   randomStage(exclude = -1) {
     const options = STAGES.map((_, i) => i).filter((i) => i !== exclude);
     if (!options.length) return 0;
-    return options[Math.floor(Math.random() * options.length)];
+    const w = this.stageWeights();
+    let r = Math.random() * options.reduce((sum, i) => sum + w[i], 0);
+    for (const i of options) if ((r -= w[i]) < 0) return i;
+    return options[options.length - 1];
   }
 
   buildWorld(index, { attract = false, seed = (Math.random() * 1e9) | 0, bleed = [] } = {}) {
@@ -141,7 +151,7 @@ export class Game {
       this.world = null;
     }
     const stage = STAGES[index];
-    const world = new World(this, stage, { seed, depth: attract ? 0 : this.depth, attract, lights: this.quality.lights, stages: STAGES, bleed: bleed.map((i) => STAGES[i]) });
+    const world = new World(this, stage, { seed, depth: attract ? 0 : this.depth, attract, lights: this.quality.lights, stages: STAGES, weights: this.stageWeights(), bleed: bleed.map((i) => STAGES[i]) });
     this.scene.add(world.root);
     this.world = world;
     this.stageIndex = index;

@@ -17,10 +17,11 @@ const _pp = new THREE.Vector3();
  * break lights and let stranger things appear.
  */
 export class World {
-  constructor(game, stage, { seed = (Math.random() * 1e9) | 0, depth = 0, attract = false, lights = 6, stages = [], bleed = [] } = {}) {
+  constructor(game, stage, { seed = (Math.random() * 1e9) | 0, depth = 0, attract = false, lights = 6, stages = [], weights = null, bleed = [] } = {}) {
     this.game = game;
     this.stage = stage;
     this.stages = stages;
+    this.stageWeights = weights;
     this.seed = seed;
     this.rng = new RNG(seed);
     this.depth = depth;
@@ -280,7 +281,10 @@ export class World {
     }
     let others = this.stages.map((_, i) => i).filter((i) => this.stages[i] !== this.stage);
     if (!others.length) others = [Math.max(0, this.stages.indexOf(this.stage))];
-    this.rng.shuffle(others);
+    // doors favour levels you haven't drifted through yet
+    const w = this.stageWeights;
+    if (w) this.rng.weightedShuffle(others, (i) => w[i] ?? 1);
+    else this.rng.shuffle(others);
     chosen.forEach((m, k) => {
       used.add(`${m.i},${m.j},${m.nx},${m.nz}`);
       const dest = others[k % Math.max(1, others.length)];

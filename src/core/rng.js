@@ -35,4 +35,12 @@ export class RNG {
     }
     return arr;
   }
+
+  /** Weighted shuffle: items with a larger weight(item) tend to come first. */
+  weightedShuffle(arr, weight) {
+    const keyed = arr.map((v) => ({ v, k: Math.pow(this.next(), 1 / Math.max(1e-6, weight(v))) }));
+    keyed.sort((a, b) => b.k - a.k);
+    keyed.forEach((e, i) => (arr[i] = e.v));
+    return arr;
+  }
 }
