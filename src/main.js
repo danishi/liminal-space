@@ -1,11 +1,9 @@
 import { UI } from './ui/ui.js';
 import { Game } from './game/game.js';
-import { STAGES } from './stages/index.js';
 import { loadSettings, saveSettings } from './core/settings.js';
 
 const canvas = document.getElementById('view');
 const ui = new UI();
-ui.stagesRef = STAGES;
 const settings = loadSettings();
 const game = new Game(canvas, ui, settings);
 window.__game = game; // handy for debugging from the console
@@ -16,44 +14,32 @@ ui.bindSettings(settings, (s) => {
 });
 
 function wakeAudio() {
-  if (!game.audio.ready) {
-    game.audio.init();
+  const first = !game.audio.ready;
+  game.audio.init();
+  if (first && game.audio.ready) {
     game.applySettings(game.settings);
     game.startAmbience();
-  } else game.audio.init();
+  }
 }
 addEventListener('pointerdown', wakeAudio, { capture: true });
 addEventListener('keydown', wakeAudio, { capture: true });
-
-function openSelect() {
-  game.state = 'select';
-  ui.showSelect(game.progress, game.stageIndex);
-  game.previewStage(game.stageIndex);
-}
 
 document.querySelectorAll('[data-nav]').forEach((b) =>
   b.addEventListener('click', () => {
     game.audio.uiClick();
     const nav = b.dataset.nav;
-    if (nav === 'back') goBack();
-    else if (nav === 'select') openSelect();
+    if (nav === 'back') ui.back();
     else ui.show(nav, { push: true });
   }));
 
-function goBack() {
-  if (ui.current === 'select') {
-    game.state = 'title';
-    ui.show('title');
-    return;
-  }
-  ui.back();
-}
-
 const acts = {
+  start: () => game.start(),
   resume: () => game.resume(),
-  restart: () => game.restart(),
-  quit: () => game.quitToSelect(),
-  next: () => game.nextStage(),
+  drift: () => {
+    game.input.requestLock();
+    game.drift(null, 'menu');
+  },
+  quit: () => game.quitToTitle(),
 };
 document.querySelectorAll('[data-act]').forEach((b) =>
   b.addEventListener('click', () => {
@@ -62,21 +48,13 @@ document.querySelectorAll('[data-act]').forEach((b) =>
   }));
 
 // hover ticks on anything clickable
+let lastHover = null;
 document.addEventListener('mouseover', (e) => {
-  const t = e.target.closest?.('.btn, .stage-card');
-  if (t && t !== document.__lastHover) game.audio.uiHover();
-  document.__lastHover = t;
+  const t = e.target.closest?.('.btn');
+  if (t && t !== lastHover) game.audio.uiHover();
+  lastHover = t;
 });
 
-ui.on('pick', (i) => {
-  game.audio.uiClick();
-  game.enterStage(i);
-});
-ui.on('preview', (i) => game.previewStage(i));
-
-document.getElementById('screen-card').addEventListener('click', () => {
-  if (game.state === 'card') game.beginPlay();
-});
 document.getElementById('resume-hint').addEventListener('click', () => {
   ui.showResumeHint(false);
   game.input.requestLock();
@@ -90,19 +68,9 @@ document.getElementById('dialog').addEventListener('click', () => {
 document.getElementById('bigmap').addEventListener('click', () => ui.toggleBigMap(false));
 
 addEventListener('keydown', (e) => {
-  const cur = ui.current;
-  if (cur === 'select') {
-    if (e.code === 'ArrowRight' || e.code === 'ArrowDown') ui.moveCard(1), e.preventDefault();
-    if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') ui.moveCard(-1), e.preventDefault();
-    if (e.code === 'Escape') goBack();
-  } else if (cur === 'settings' || cur === 'help') {
-    if (e.code === 'Escape') {
-      ui.back();
-      game.input.presses.delete('pause');
-    }
-  } else if (cur === 'card' && (e.code === 'Enter' || e.code === 'Space')) {
-    e.preventDefault();
-    game.beginPlay();
+  if ((ui.current === 'settings' || ui.current === 'help') && e.code === 'Escape') {
+    ui.back();
+    game.input.presses.delete('pause');
   }
 });
 

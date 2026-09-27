@@ -4,7 +4,7 @@ import { MapMemory, drawMinimap, drawBigMap } from './minimap.js';
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['title', 'select', 'card', 'pause', 'settings', 'help', 'result', 'gameover'];
+const SCREENS = ['title', 'pause', 'settings', 'help'];
 
 export class UI {
   constructor() {
@@ -22,8 +22,10 @@ export class UI {
     this.crosshair = $('crosshair');
     this.clockEl = $('hud-clock');
     this.stageEl = $('hud-stage');
-    this.objEl = $('hud-objective');
+    this.signalEl = $('signal');
+    this.signalBars = [...this.signalEl.querySelectorAll('i')];
     this.minimap = $('minimap');
+    this.minimapWrap = $('minimap-wrap');
     this.bigmap = $('bigmap');
     this.bigmapCanvas = $('bigmap-canvas');
     this.dialogEl = $('dialog');
@@ -32,24 +34,13 @@ export class UI {
     this.dlgNext = $('dlg-next');
     this.fpsEl = $('fps');
     this.resumeEl = $('resume-hint');
-    this.meters = {
-      stamina: $('meter-stamina'),
-      sanity: $('meter-sanity'),
-      battery: $('meter-battery'),
-    };
+    this.levelCard = $('level-card');
     this.bigMapOpen = false;
+    this.showMinimap = false;
     this.mem = null;
     this.typing = null;
-    this.handlers = {};
     this.hintTimer = null;
-  }
-
-  on(name, fn) {
-    this.handlers[name] = fn;
-  }
-
-  emit(name, ...args) {
-    this.handlers[name]?.(...args);
+    this.cardTimer = null;
   }
 
   // ---- screens ---------------------------------------------------------------
@@ -61,8 +52,7 @@ export class UI {
     this.current = name;
     if (name) {
       const el = this.screens[name];
-      const first = el.querySelector('.stage-card.active') || el.querySelector('.btn-primary') || el.querySelector('.btn');
-      // keyboard users land on the primary action
+      const first = el.querySelector('.btn-primary') || el.querySelector('.btn');
       if (first && !matchMedia('(pointer: coarse)').matches) setTimeout(() => first.focus({ preventScroll: true }), 30);
     }
   }
@@ -70,15 +60,14 @@ export class UI {
   back() {
     const prev = this.stack.pop();
     this.show(prev || 'title');
-    if (prev) this.emit('back', prev);
   }
 
-  fadeOut(white = false) {
-    this.fadeEl.classList.toggle('white', white);
+  /** Fade to black with tape static. `heavy` = stronger static (falling, signal loss). */
+  fadeOut(heavy = false) {
     this.fadeEl.style.opacity = '1';
-    this.staticEl.style.transition = 'opacity 0.4s';
-    this.staticEl.style.opacity = white ? '0' : '0.12';
-    return new Promise((r) => setTimeout(r, 650));
+    this.staticEl.style.transition = 'opacity 0.3s';
+    this.staticEl.style.opacity = heavy ? '0.5' : '0.18';
+    return new Promise((r) => setTimeout(r, heavy ? 900 : 650));
   }
 
   fadeIn() {
@@ -93,98 +82,17 @@ export class UI {
     setTimeout(() => b.remove(), 700);
   }
 
-  renderStages(stages, progress, activeIndex = 0) {
-    const list = $('stage-list');
-    list.innerHTML = '';
-    stages.forEach((s, i) => {
-      const cleared = progress.cleared[s.id];
-      const b = document.createElement('button');
-      b.className = 'stage-card' + (i === activeIndex ? ' active' : '');
-      b.setAttribute('role', 'listitem');
-      b.id = `stage-${s.id}`;
-      b.style.setProperty('--c1', s.art.c1);
-      b.style.setProperty('--c2', s.art.c2);
-      b.style.setProperty('--c3', s.art.c3);
-      const pips = [0, 1, 2].map((k) => `<i class="${k < s.danger ? 'on' : ''}"></i>`).join('');
-      b.innerHTML = `
-        <div class="stage-art"><span class="stage-code">${s.code}</span>
-          <span class="stage-badge ${cleared ? 'cleared' : ''}">${cleared ? '踏破' : '未踏'}</span></div>
-        <div class="stage-body">
-          <h3 class="stage-name">${s.name}</h3>
-          <span class="stage-en">${s.en}</span>
-          <p class="stage-desc">${s.desc}</p>
-          <div class="stage-meta">
-            <span class="tags">${s.tags.map((t) => `<span class="tag">${t}</span>`).join('')}</span>
-            <span>${cleared ? `最速 ${formatTime(cleared.best)}` : ''}</span>
-            <span class="danger-pips" title="危険度 ${s.danger}/3" aria-label="危険度 ${s.danger}/3">${pips}</span>
-          </div>
-        </div>`;
-      b.addEventListener('mouseenter', () => this.activateCard(i, true));
-      b.addEventListener('focus', () => this.activateCard(i, false));
-      b.addEventListener('click', () => this.emit('pick', i));
-      list.appendChild(b);
-    });
-    this.cardIndex = activeIndex;
-  }
-
-  activateCard(i, hover) {
-    const cards = [...document.querySelectorAll('.stage-card')];
-    cards.forEach((c, k) => c.classList.toggle('active', k === i));
-    if (this.cardIndex !== i) this.emit('hoverSound');
-    this.cardIndex = i;
-    clearTimeout(this.previewTimer);
-    this.previewTimer = setTimeout(() => this.emit('preview', i), hover ? 220 : 120);
-  }
-
-  moveCard(delta) {
-    const cards = [...document.querySelectorAll('.stage-card')];
-    if (!cards.length) return;
-    const i = (this.cardIndex + delta + cards.length) % cards.length;
-    cards[i].focus();
-  }
-
-  showSelect(progress, index) {
-    this.renderStages(this.stagesRef, progress, index);
-    this.show('select');
-  }
-
-  showCard(stage) {
-    $('card-level').textContent = stage.code;
-    $('card-title').textContent = stage.name;
-    $('card-sub').textContent = stage.en;
-    $('card-goal').textContent = stage.goal;
-    $('card-tip').textContent = stage.tip;
-    $('card-go').textContent = matchMedia('(pointer: coarse)').matches ? 'タップして入る' : 'クリックして入る';
-    this.show('card');
-  }
-
-  showPause(world, time) {
-    $('pause-stage').textContent = `${world.stage.code} ${world.stage.name}`;
-    $('pause-time').textContent = formatTime(time);
-    $('pause-frags').textContent = `${world.collected} / ${world.fragments.length}`;
+  showPause(world, totalTime, depth) {
+    $('pause-stage').textContent = `${world.stage.code} · ${world.stage.name}`;
+    $('pause-time').textContent = formatTime(totalTime);
+    $('pause-depth').textContent = String(depth);
     this.toggleBigMap(false);
     this.show('pause');
   }
 
-  showResult(stage, time, best, isRecord, memories, next) {
-    $('result-title').textContent = `${stage.name}を抜け出した`;
-    $('result-line').textContent = stage.clearLine || '扉の向こうには、また別の知らない場所があった。';
-    $('result-time').textContent = formatTime(time);
-    $('result-best').textContent = formatTime(best) + (isRecord ? ' 更新' : '');
-    $('result-memories').innerHTML = memories.map((m) => `<li>${m}</li>`).join('');
-    $('result-next').textContent = next ? `次の階層へ（${next.name}）` : '最初の階層へ';
-    this.show('result');
-  }
-
-  showGameOver(title, line) {
-    $('over-title').textContent = title;
-    $('over-line').textContent = line;
-    this.show('gameover');
-  }
-
   // ---- HUD -------------------------------------------------------------------
 
-  hud(on, world = null) {
+  hud(on, world = null, depth = 0) {
     this.hudEl.hidden = !on;
     $('touch').hidden = !on || !this.touchOn;
     if (!on) {
@@ -196,53 +104,47 @@ export class UI {
     }
     if (world) {
       this.mem = new MapMemory(world);
-      this.stageEl.textContent = `${world.stage.code} ／ ${world.stage.name}`;
-      this.meters.battery.hidden = !world.env.flashlight;
+      this.stageEl.textContent = `${world.stage.code} · ${world.stage.name}${depth ? ` · drift ${depth}` : ''}`;
       $('tbtn-light').hidden = !world.env.flashlight;
-      $('bigmap-title').textContent = `${world.stage.code} ${world.stage.name} の地図`;
+      $('bigmap-title').textContent = `Map — ${world.stage.code} ${world.stage.name}`;
       this.toastsEl.innerHTML = '';
-      this.updateObjective(world);
+      this.minimapWrap.hidden = !this.showMinimap;
     }
   }
 
-  updateObjective(world) {
-    const n = world.collected;
-    const total = world.fragments.length;
-    const pips = world.fragments.map((_, k) => `<i class="${k < n ? 'on' : ''}"></i>`).join('');
-    const open = n >= total;
-    this.objEl.classList.toggle('exit-open', open);
-    this.objEl.innerHTML = open
-      ? `<span class="frag-pips">${pips}</span><span>出口が開いた — 地図の緑を目指せ</span>`
-      : `<span class="frag-pips">${pips}</span><span>記憶の欠片 ${n} / ${total}</span>`;
+  levelIntro(stage, depth) {
+    $('lc-code').textContent = `${stage.code}${depth ? `  ·  DRIFT ${depth}` : ''}`;
+    $('lc-name').textContent = stage.name;
+    $('lc-sub').textContent = stage.sub || '';
+    this.levelCard.classList.add('on');
+    clearTimeout(this.cardTimer);
+    this.cardTimer = setTimeout(() => this.levelCard.classList.remove('on'), 5200);
   }
 
-  updateHud(game, dt) {
-    const p = game.player;
-    this.clockEl.textContent = formatTime(game.stageTime);
-    this.meter('stamina', p.stamina / 100, p.exhausted, p.stamina >= 99.5);
-    this.meter('sanity', p.sanity / 100, p.sanity < 30, false);
-    if (game.world.env.flashlight) this.meter('battery', p.battery / 100, p.battery < 20, !p.flashlight && p.battery >= 99.5);
-    const lightBtn = $('tbtn-light');
-    if (lightBtn) lightBtn.classList.toggle('on', p.flashlight);
-    void dt;
+  updateHud(game) {
+    this.clockEl.textContent = formatTime(game.totalTime);
+    const w = game.world;
+    const frac = Math.max(0, w.timeLeft / w.duration);
+    const lit = Math.ceil(frac * 5);
+    this.signalBars.forEach((b, k) => b.classList.toggle('off', k >= lit));
+    this.signalEl.classList.toggle('low', frac < 0.12);
+    $('tbtn-light')?.classList.toggle('on', game.player.flashlight);
   }
 
-  meter(name, v, low, idle) {
-    const m = this.meters[name];
-    m.querySelector('.meter-fill').style.transform = `scaleX(${Math.max(0, Math.min(1, v))})`;
-    m.classList.toggle('low', low);
-    m.classList.toggle('idle', idle);
-  }
-
-  drawMinimap(world, player) {
+  drawMaps(world, player) {
     if (!this.mem || this.mem.world !== world) this.mem = new MapMemory(world);
     this.mem.timer -= 1;
     if (this.mem.timer <= 0) {
       this.mem.timer = 6;
       this.mem.reveal(player.pos.x, player.pos.z, 4);
     }
-    drawMinimap(this.minimap, world, this.mem, player);
+    if (this.showMinimap) drawMinimap(this.minimap, world, this.mem, player);
     if (this.bigMapOpen) drawBigMap(this.bigmapCanvas, world, this.mem, player);
+  }
+
+  setMinimap(on) {
+    this.showMinimap = on;
+    this.minimapWrap.hidden = !on;
   }
 
   toggleBigMap(force) {
@@ -259,7 +161,7 @@ export class UI {
       return;
     }
     this.promptEl.hidden = false;
-    this.promptKey.textContent = touch ? '調べる' : 'E';
+    this.promptKey.textContent = touch ? 'Use' : 'E';
     if (this.promptText.textContent !== text) this.promptText.textContent = text;
   }
 
@@ -281,17 +183,19 @@ export class UI {
   controlsHint(flashlight) {
     const el = $('controls-hint');
     const parts = [
-      '<span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動</span>',
-      '<span><kbd>Shift</kbd> 走る</span>',
-      '<span><kbd>E</kbd> 調べる</span>',
-      flashlight ? '<span><kbd>F</kbd> ライト</span>' : '',
-      '<span><kbd>M</kbd> 地図</span>',
-      '<span><kbd>Esc</kbd> 一時停止</span>',
+      '<span><kbd>↑</kbd><kbd>↓</kbd> Walk</span>',
+      '<span><kbd>←</kbd><kbd>→</kbd> Turn</span>',
+      '<span>Mouse Look</span>',
+      '<span><kbd>Shift</kbd> Run</span>',
+      '<span><kbd>E</kbd> Interact</span>',
+      flashlight ? '<span><kbd>F</kbd> Light</span>' : '',
+      '<span><kbd>M</kbd> Map</span>',
+      '<span><kbd>Esc</kbd> Pause</span>',
     ];
     el.innerHTML = parts.join('');
     el.classList.remove('gone');
     clearTimeout(this.hintTimer);
-    this.hintTimer = setTimeout(() => el.classList.add('gone'), 9000);
+    this.hintTimer = setTimeout(() => el.classList.add('gone'), 10000);
   }
 
   showResumeHint(on) {
@@ -316,7 +220,7 @@ export class UI {
       return;
     }
     this.dialogEl.hidden = false;
-    document.getElementById('controls-hint').classList.add('gone');
+    $('controls-hint').classList.add('gone');
     this.dlgName.textContent = name;
     this.dlgText.textContent = '';
     this.dlgNext.classList.remove('ready');
@@ -326,9 +230,9 @@ export class UI {
     this.typing = setInterval(() => {
       i++;
       this.dlgText.textContent = chars.slice(0, i).join('');
-      if (audio && i % 2 === 0 && chars[i - 1] && !'、。…　 '.includes(chars[i - 1])) audio.blip(voice);
+      if (audio && i % 2 === 0 && chars[i - 1] && !' ,.…'.includes(chars[i - 1])) audio.blip(voice);
       if (i >= chars.length) this.dialogSkip();
-    }, 32);
+    }, 26);
   }
 
   dialogDone() {
@@ -356,7 +260,7 @@ export class UI {
       buttons: [...document.querySelectorAll('#touch .tbtn')],
     });
     if (!this.hudEl.hidden) $('touch').hidden = false;
-    $('dlg-next').textContent = 'タップで次へ';
+    $('dlg-next').textContent = 'Tap to continue';
   }
 
   // ---- settings -----------------------------------------------------------------
@@ -369,7 +273,8 @@ export class UI {
       music: ['set-music', 'out-music', (v) => `${Math.round(v * 100)}`],
       sfx: ['set-sfx', 'out-sfx', (v) => `${Math.round(v * 100)}`],
     };
-    const checks = { invertY: 'set-invert', headBob: 'set-bob', reduceEffects: 'set-reduce', showFps: 'set-fps' };
+    const checks = { invertY: 'set-invert', headBob: 'set-bob', reduceEffects: 'set-reduce', showFps: 'set-fps', minimap: 'set-minimap' };
+    const steerIds = { 0: 'set-steer-0', 0.35: 'set-steer-1', 0.65: 'set-steer-2', 1: 'set-steer-3' };
     const sync = () => {
       for (const [k, [id, out, fmt]] of Object.entries(fields)) {
         $(id).value = settings[k];
@@ -377,6 +282,7 @@ export class UI {
       }
       for (const [k, id] of Object.entries(checks)) $(id).checked = !!settings[k];
       $(`set-q-${settings.quality}`).checked = true;
+      $(steerIds[settings.steer] || 'set-steer-2').checked = true;
     };
     sync();
     for (const [k, [id, out, fmt]] of Object.entries(fields)) {
@@ -395,6 +301,11 @@ export class UI {
     document.querySelectorAll('input[name="quality"]').forEach((r) =>
       r.addEventListener('change', (e) => {
         settings.quality = e.target.value;
+        onChange(settings);
+      }));
+    document.querySelectorAll('input[name="steer"]').forEach((r) =>
+      r.addEventListener('change', (e) => {
+        settings.steer = Number(e.target.value);
         onChange(settings);
       }));
     $('settings-reset').addEventListener('click', () => {

@@ -83,169 +83,9 @@ function pixels(ctx, w, h, fn) {
   ctx.putImageData(img, 0, 0);
 }
 
-function stains(ctx, w, h, n, color, seed, maxR = 0.18) {
-  for (let s = 0; s < n; s++) {
-    const x = hash(s, 1, seed) * w;
-    const y = hash(s, 2, seed) * h;
-    const r = (0.04 + hash(s, 3, seed) * maxR) * w;
-    // draw wrapped copies so the stain tiles
-    for (const ox of [-w, 0, w]) {
-      for (const oy of [-h, 0, h]) {
-        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
-        g.addColorStop(0, color);
-        g.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
-      }
-    }
-  }
-}
-
-// ---- Level 0: the yellow rooms -------------------------------------------
-
-export function backroomsWall() {
-  return tex('br-wall', 512, 512, (ctx, w, h) => {
-    ctx.fillStyle = '#c8b25c';
-    ctx.fillRect(0, 0, w, h);
-    // faint vertical stripe pattern of the wallpaper
-    for (let x = 0; x < w; x += 32) {
-      ctx.fillStyle = 'rgba(120,96,30,0.10)';
-      ctx.fillRect(x, 0, 14, h);
-      ctx.fillStyle = 'rgba(255,240,170,0.10)';
-      ctx.fillRect(x + 16, 0, 2, h);
-    }
-    // tiny chevron motif
-    ctx.strokeStyle = 'rgba(110,88,28,0.16)';
-    ctx.lineWidth = 1.5;
-    for (let y = 8; y < h; y += 24) {
-      for (let x = 7; x < w; x += 32) {
-        ctx.beginPath();
-        ctx.moveTo(x - 4, y + 3);
-        ctx.lineTo(x, y);
-        ctx.lineTo(x + 4, y + 3);
-        ctx.stroke();
-      }
-    }
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = fbm(x, y, w, 8, 4, 3) - 0.5;
-      const grime = Math.max(0, (y / h - 0.7) / 0.3); // darker near the floor (v=0 at bottom → canvas top is v=1)
-      const f = 1 + n * 0.22 - (1 - y / h < 0.2 ? 0 : 0) - grime * 0.18;
-      d[k] *= f;
-      d[k + 1] *= f;
-      d[k + 2] *= f * 0.97;
-    });
-    stains(ctx, w, h, 7, 'rgba(90,70,20,0.18)', 11, 0.14);
-  });
-}
-
-export function backroomsCarpet() {
-  return tex('br-carpet', 512, 512, (ctx, w, h) => {
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = fbm(x, y, w, 6, 5, 21);
-      const fiber = hash(x, y, 5) * 0.16;
-      const v = 0.72 + n * 0.35 + fiber - 0.08;
-      d[k] = 150 * v;
-      d[k + 1] = 128 * v;
-      d[k + 2] = 72 * v;
-      d[k + 3] = 255;
-    });
-    stains(ctx, w, h, 5, 'rgba(60,45,15,0.28)', 7, 0.2);
-  });
-}
-
-export function backroomsCeiling() {
-  return tex('br-ceiling', 256, 256, (ctx, w, h) => {
-    ctx.fillStyle = '#d9d3bd';
-    ctx.fillRect(0, 0, w, h);
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const speck = hash(x, y, 9) > 0.93 ? 0.8 : 1;
-      const n = 0.94 + fbm(x, y, w, 4, 3, 2) * 0.1;
-      d[k] *= speck * n;
-      d[k + 1] *= speck * n;
-      d[k + 2] *= speck * n;
-    });
-    ctx.strokeStyle = '#8e876e';
-    ctx.lineWidth = 3;
-    for (let i = 0; i <= 2; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * (w / 2), 0);
-      ctx.lineTo(i * (w / 2), h);
-      ctx.moveTo(0, i * (h / 2));
-      ctx.lineTo(w, i * (h / 2));
-      ctx.stroke();
-    }
-    stains(ctx, w, h, 3, 'rgba(120,100,40,0.2)', 31, 0.12);
-  });
-}
-
 // ---- Poolrooms -------------------------------------------------------------
 
-function tiles(ctx, w, h, n, base, grout, seed, jitter = 10) {
-  const s = w / n;
-  ctx.fillStyle = grout;
-  ctx.fillRect(0, 0, w, h);
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
-      const v = (hash(i, j, seed) - 0.5) * jitter;
-      const [r, g, b] = base;
-      ctx.fillStyle = `rgb(${r + v},${g + v},${b + v})`;
-      ctx.fillRect(i * s + 1.5, j * s + 1.5, s - 3, s - 3);
-      // soft glaze highlight
-      const gr = ctx.createLinearGradient(i * s, j * s, i * s + s, j * s + s);
-      gr.addColorStop(0, 'rgba(255,255,255,0.10)');
-      gr.addColorStop(1, 'rgba(0,0,0,0.04)');
-      ctx.fillStyle = gr;
-      ctx.fillRect(i * s + 1.5, j * s + 1.5, s - 3, s - 3);
-    }
-  }
-}
-
-export function poolTileWhite() {
-  return tex('pool-white', 512, 512, (ctx, w, h) => tiles(ctx, w, h, 8, [236, 240, 238], '#b9c3c4', 4));
-}
-
-export function poolTileBlue() {
-  return tex('pool-blue', 512, 512, (ctx, w, h) => tiles(ctx, w, h, 8, [96, 186, 205], '#5c9aa9', 8, 16));
-}
-
 /** Grout-only bump map for the tiles (white tiles, dark lines). */
-export function tileBump() {
-  return tex('tile-bump', 256, 256, (ctx, w, h) => {
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    const s = w / 8;
-    for (let i = 0; i <= 8; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * s, 0);
-      ctx.lineTo(i * s, h);
-      ctx.moveTo(0, i * s);
-      ctx.lineTo(w, i * s);
-      ctx.stroke();
-    }
-  }, { srgb: false });
-}
-
-export function waterNormal() {
-  return tex('water-normal', 256, 256, (ctx, w, h) => {
-    const hgt = new Float32Array(w * h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) hgt[y * w + x] = fbm(x, y, w, 4, 4, 77);
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const l = hgt[y * w + ((x - 1 + w) % w)];
-      const r = hgt[y * w + ((x + 1) % w)];
-      const u = hgt[((y - 1 + h) % h) * w + x];
-      const dn = hgt[((y + 1) % h) * w + x];
-      const nx = (l - r) * 6;
-      const ny = (u - dn) * 6;
-      const len = Math.hypot(nx, ny, 1);
-      d[k] = (nx / len * 0.5 + 0.5) * 255;
-      d[k + 1] = (ny / len * 0.5 + 0.5) * 255;
-      d[k + 2] = (1 / len * 0.5 + 0.5) * 255;
-      d[k + 3] = 255;
-    });
-  }, { srgb: false });
-}
 
 export function caustics() {
   return tex('caustics', 256, 256, (ctx, w, h) => {
@@ -255,32 +95,6 @@ export function caustics() {
       const r = 1 - Math.min(1, Math.abs(a - b) * 9);
       const v = Math.pow(Math.max(0, r), 3) * 255;
       d[k] = v * 0.8; d[k + 1] = v; d[k + 2] = v; d[k + 3] = 255;
-    });
-  });
-}
-
-// ---- Pastel dream ----------------------------------------------------------
-
-export function pastelChecker() {
-  return tex('pastel-check', 256, 256, (ctx, w, h) => {
-    const s = w / 2;
-    const cols = ['#f7d9e3', '#fdf6ee'];
-    for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
-      ctx.fillStyle = cols[(i + j) % 2];
-      ctx.fillRect(i * s, j * s, s, s);
-    }
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = 0.97 + fbm(x, y, w, 4, 2, 5) * 0.05;
-      d[k] *= n; d[k + 1] *= n; d[k + 2] *= n;
-    });
-  });
-}
-
-export function softGrain() {
-  return tex('soft-grain', 256, 256, (ctx, w, h) => {
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const v = 235 + fbm(x, y, w, 4, 3, 44) * 20;
-      d[k] = v; d[k + 1] = v; d[k + 2] = v; d[k + 3] = 255;
     });
   });
 }
@@ -302,95 +116,6 @@ export function cloudSprite() {
 }
 
 // ---- Night hotel -----------------------------------------------------------
-
-export function hotelCarpet() {
-  return tex('hotel-carpet', 512, 512, (ctx, w, h) => {
-    ctx.fillStyle = '#5b1418';
-    ctx.fillRect(0, 0, w, h);
-    const s = 64;
-    ctx.lineWidth = 3;
-    for (let y = 0; y <= h; y += s) {
-      for (let x = 0; x <= w; x += s) {
-        ctx.strokeStyle = 'rgba(196,142,64,0.55)';
-        ctx.beginPath();
-        ctx.moveTo(x, y - s / 2 + 6);
-        ctx.lineTo(x + s / 2 - 6, y);
-        ctx.lineTo(x, y + s / 2 - 6);
-        ctx.lineTo(x - s / 2 + 6, y);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(30,60,50,0.8)';
-        ctx.beginPath();
-        ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(196,142,64,0.4)';
-        ctx.beginPath();
-        ctx.arc(x + s / 2, y + s / 2, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = 0.8 + fbm(x, y, w, 8, 4, 12) * 0.35 + hash(x, y, 3) * 0.08;
-      d[k] *= n; d[k + 1] *= n; d[k + 2] *= n;
-    });
-  });
-}
-
-export function hotelWallpaper() {
-  return tex('hotel-wall', 512, 512, (ctx, w, h) => {
-    ctx.fillStyle = '#2e3a30';
-    ctx.fillRect(0, 0, w, h);
-    for (let x = 0; x < w; x += 64) {
-      ctx.fillStyle = 'rgba(0,0,0,0.18)';
-      ctx.fillRect(x + 28, 0, 36, h);
-    }
-    // damask-ish medallions
-    ctx.strokeStyle = 'rgba(170,150,95,0.35)';
-    ctx.lineWidth = 2;
-    for (let y = 0; y < h + 64; y += 96) {
-      for (let x = 0; x < w + 64; x += 64) {
-        const oy = (x / 64) % 2 ? 48 : 0;
-        const cx = x + 14;
-        const cy = y + oy;
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, 9, 18, 0, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - 26);
-        ctx.quadraticCurveTo(cx + 12, cy - 22, cx, cy - 18);
-        ctx.quadraticCurveTo(cx - 12, cy - 22, cx, cy - 26);
-        ctx.stroke();
-      }
-    }
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = 0.82 + fbm(x, y, w, 6, 4, 8) * 0.3;
-      d[k] *= n; d[k + 1] *= n; d[k + 2] *= n;
-    });
-    stains(ctx, w, h, 4, 'rgba(0,0,0,0.25)', 3, 0.2);
-  });
-}
-
-export function wood(key = 'wood', base = [74, 44, 28]) {
-  return tex(key, 256, 256, (ctx, w, h) => {
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = fbm(x * 0.15, y * 3, w, 4, 4, 91);
-      const ring = 0.5 + 0.5 * Math.sin((x / w) * 40 + n * 12);
-      const v = 0.7 + ring * 0.2 + n * 0.2;
-      d[k] = base[0] * v; d[k + 1] = base[1] * v; d[k + 2] = base[2] * v; d[k + 3] = 255;
-    });
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    for (let x = 0; x < w; x += 64) ctx.fillRect(x, 0, 2, h);
-  });
-}
-
-export function plainNoise(key, rgb, amount = 0.12, scale = 6) {
-  return tex(key, 256, 256, (ctx, w, h) => {
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = 1 - amount + fbm(x, y, w, scale, 4, key.length * 13) * amount * 2;
-      d[k] = rgb[0] * n; d[k + 1] = rgb[1] * n; d[k + 2] = rgb[2] * n; d[k + 3] = 255;
-    });
-  });
-}
 
 /** Hotel room door with a brass number plate. Not cached — one per number. */
 export function hotelDoor(number) {
@@ -430,49 +155,6 @@ export function hotelDoor(number) {
 }
 
 // ---- Twilight school -------------------------------------------------------
-
-export function schoolWall() {
-  return tex('school-wall', 512, 512, (ctx, w, h) => {
-    // canvas top = top of wall. Cream plaster above, sage green paint below.
-    ctx.fillStyle = '#e8dcc2';
-    ctx.fillRect(0, 0, w, h);
-    const split = h * 0.62;
-    ctx.fillStyle = '#7f9c86';
-    ctx.fillRect(0, split, w, h - split);
-    ctx.fillStyle = '#5c7462';
-    ctx.fillRect(0, split - 6, w, 8);
-    ctx.fillStyle = '#3f4a3f';
-    ctx.fillRect(0, h - 22, w, 22);
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = 0.9 + fbm(x, y, w, 8, 4, 64) * 0.18;
-      d[k] *= n; d[k + 1] *= n; d[k + 2] *= n;
-    });
-    stains(ctx, w, h, 3, 'rgba(90,70,40,0.12)', 5, 0.12);
-  });
-}
-
-export function linoleum() {
-  return tex('lino', 512, 512, (ctx, w, h) => {
-    const s = w / 4;
-    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
-      const v = hash(i, j, 3) * 12;
-      ctx.fillStyle = (i + j) % 2 ? `rgb(${120 + v},${118 + v},${108 + v})` : `rgb(${150 + v},${146 + v},${132 + v})`;
-      ctx.fillRect(i * s, j * s, s, s);
-    }
-    pixels(ctx, w, h, (x, y, d, k) => {
-      const n = 0.88 + fbm(x, y, w, 16, 3, 9) * 0.2 + (hash(x, y, 1) > 0.97 ? -0.15 : 0);
-      d[k] *= n; d[k + 1] *= n; d[k + 2] *= n;
-    });
-    ctx.strokeStyle = 'rgba(40,36,30,0.4)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * s, 0); ctx.lineTo(i * s, h);
-      ctx.moveTo(0, i * s); ctx.lineTo(w, i * s);
-      ctx.stroke();
-    }
-  });
-}
 
 export function schoolWindow() {
   // A window strip: sunset sky seen through a steel-framed window.
@@ -514,7 +196,7 @@ export function chalkboard() {
     });
     ctx.fillStyle = 'rgba(240,240,230,0.75)';
     ctx.font = '28px "DotGothic16", monospace';
-    ctx.fillText('きょうの日直', 30, 60);
+    ctx.fillText('日直 On duty today', 30, 60);
     ctx.fillText('— 　　　　—', 60, 110);
     ctx.font = '22px "DotGothic16", monospace';
     ctx.fillText('ここは どこ？', 300, 190);

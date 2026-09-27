@@ -4,8 +4,10 @@
 const BINDINGS = {
   KeyW: 'forward', ArrowUp: 'forward',
   KeyS: 'back', ArrowDown: 'back',
-  KeyA: 'left', ArrowLeft: 'left',
-  KeyD: 'right', ArrowRight: 'right',
+  KeyA: 'left',
+  KeyD: 'right',
+  ArrowLeft: 'turnLeft', KeyQ: 'turnLeft',
+  ArrowRight: 'turnRight', KeyC: 'turnRight',
   ShiftLeft: 'run', ShiftRight: 'run',
   KeyE: 'interact', Space: 'interact',
   KeyF: 'flashlight',
@@ -32,6 +34,7 @@ export class Input {
     this.dragging = false;
     this.enabled = false;
     this.usingTouch = false;
+    this.lastManualLook = -1e9; // performance.now() of the last mouse/stick/touch look
     this.onLockChange = null;
     this.onFirstTouch = null;
 
@@ -57,7 +60,9 @@ export class Input {
         if (Math.abs(e.movementX) > 300 || Math.abs(e.movementY) > 300) return;
         this.lookX += e.movementX;
         this.lookY += e.movementY;
+        if (Math.abs(e.movementX) + Math.abs(e.movementY) > 1) this.lastManualLook = performance.now();
       } else if (this.dragging) {
+        this.lastManualLook = performance.now();
         this.lookX += e.movementX * 1.4;
         this.lookY += e.movementY * 1.4;
       }
@@ -82,6 +87,7 @@ export class Input {
     const action = BINDINGS[e.code];
     if (!action) return;
     if (this.enabled && (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow'))) e.preventDefault();
+    if (isDown && (action === 'turnLeft' || action === 'turnRight')) this.lastKeyTurn = performance.now();
     if (isDown) {
       if (!e.repeat) this.presses.add(action);
       this.held.add(action);
@@ -127,6 +133,16 @@ export class Input {
     this.presses.add(action);
   }
 
+  /** Keyboard turning in [-1, 1] (negative = left). */
+  turn() {
+    return (this.held.has('turnRight') ? 1 : 0) - (this.held.has('turnLeft') ? 1 : 0);
+  }
+
+  /** Seconds since the player last looked around manually. */
+  idleLook() {
+    return (performance.now() - this.lastManualLook) / 1000;
+  }
+
   /** Movement vector in [-1,1]² (x = strafe, y = forward). */
   move() {
     let x = 0;
@@ -156,8 +172,11 @@ export class Input {
     const dz = (v) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
     this.padMove.x = dz(gp.axes[0] || 0);
     this.padMove.y = -dz(gp.axes[1] || 0);
-    this.lookX += dz(gp.axes[2] || 0) * 900 * dt;
-    this.lookY += dz(gp.axes[3] || 0) * 650 * dt;
+    const lx = dz(gp.axes[2] || 0);
+    const ly = dz(gp.axes[3] || 0);
+    this.lookX += lx * 900 * dt;
+    this.lookY += ly * 650 * dt;
+    if (lx || ly) this.lastManualLook = performance.now();
     this.padRun = !!(gp.buttons[5]?.pressed || gp.buttons[7]?.pressed || gp.buttons[10]?.pressed);
     for (const [idx, action] of Object.entries(PAD_BUTTONS)) {
       const p = !!gp.buttons[idx]?.pressed;
@@ -226,6 +245,7 @@ export class Input {
       if (e.pointerId !== lookId) return;
       this.lookX += (e.clientX - last.x) * 2.2;
       this.lookY += (e.clientY - last.y) * 2.2;
+      this.lastManualLook = performance.now();
       last = { x: e.clientX, y: e.clientY };
     });
     const endLook = (e) => {
