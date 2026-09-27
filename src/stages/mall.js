@@ -571,7 +571,7 @@ function planter(k, rng, o = {}) {
   for (let s = 0; s < n; s++) {
     const x = n === 1 ? 0 : (s - 0.5) * (w * 0.5);
     if (o.dead && rng.chance(0.6)) continue;
-    k.model(g, rng.chance(0.5) ? 'potted_plant_04' : 'potted_plant_02', x, 0.3, 0, rng.float(0, PI * 2), rng.float(1.1, 1.5));
+    k.model(g, 'potted_plant_02', x, 0.2, 0, rng.float(0, PI * 2), rng.float(1.4, 1.8));
   }
   return g;
 }
@@ -900,13 +900,13 @@ export default {
     models: [
       'CashRegister_01', 'potted_plant_04', 'modular_street_seating', 'bar_chair_round_01', 'coffee_table_round_01', 'wooden_display_shelves_01',
       'metal_trash_can', 'WetFloorSign_01', 'potted_plant_02', 'security_camera_01', 'cardboard_box_01', 'hand_truck', 'trashbag',
-      'korean_public_payphone_01', 'vintage_suitcase',
+      'vintage_suitcase',
     ],
     looks: ['guard', ['mannequin', 0], ['mannequin', 1], ['mannequin', 2], ['watcher', WATCHER_LOOK], 'cat'],
   },
 
   build(world) {
-    console.warn('SIZES', JSON.stringify(this.assets.models.map((m) => [m, modelSize(m).toArray().map((v) => +v.toFixed(2))])));
+    const T0 = performance.now();
     const rng = world.rng;
     const depth = world.depth;
     const g = (world.grid = new Grid(W, HH, CS, WALL));
@@ -1381,7 +1381,15 @@ export default {
 
     // ---- shop interiors --------------------------------------------------------------
     const tileMat = photo('blue_floor_tiles_01', { uvScale: 1, color: 0xd0dcd8 });
-    const shelfModel = P.modelProp('wooden_display_shelves_01');
+    // the scanned shelf is long along its z axis; turn it so it lines a wall
+    const shelfModel = {
+      fp: [1.1, 0.4],
+      build(k) {
+        const grp = G();
+        k.model(grp, 'wooden_display_shelves_01', 0, 0, 0, -PI / 2, 1);
+        return grp;
+      },
+    };
     for (const f of fronts) {
       if (!f.open) continue;
       const place = (grp, lx, lz, lyaw, collide) => {
@@ -1473,7 +1481,7 @@ export default {
         }
         const tc = G();
         kit.model(tc, 'metal_trash_can', 0, 0, 0, 0, 0.85);
-        kit.add(tc, x + 2.3, z + rng.float(-0.4, 0.4), rng.float(0, 6), { collide: { r: 0.3 } });
+        kit.add(tc, x + 2.75, z, PI / 2, { collide: [1.6, 0.5] });
       }
     });
     // directory stars: one where you are, more where you aren't
@@ -1555,7 +1563,7 @@ export default {
       const u = world.uneaseAt(x, z);
       const tg = G();
       kit.model(tg, 'coffee_table_round_01', 0, 0, 0, 0, 1);
-      const chairs = u > 0.8 ? rng.int(0, 2) : rng.int(2, 4);
+      const chairs = u > 0.8 ? rng.int(0, 1) : 2;
       for (let c = 0; c < chairs; c++) {
         const a = (c / Math.max(1, chairs)) * PI * 2 + rng.float(-0.3, 0.3);
         const r = u > 0.9 && rng.chance(0.5) ? rng.float(1.2, 2.2) : 0.95;
@@ -1624,7 +1632,6 @@ export default {
     const M = {
       trash: P.modelProp('metal_trash_can', { scale: 0.85 }),
       plant: P.modelProp('potted_plant_02', { scale: 1.2 }),
-      phone: P.modelProp('korean_public_payphone_01', { place: 'high', y: 0.9, collide: false }),
       cam: P.modelProp('security_camera_01', { place: 'high', y: 2.5, collide: false }),
       sign: P.modelProp('WetFloorSign_01', { jitter: 3 }),
       box: P.modelProp('cardboard_box_01', { jitter: 0.3, scaleJitter: 0.2 }),
@@ -1639,7 +1646,7 @@ export default {
         { p: M.trash, w: 2 }, { p: M.plant, w: 2 }, { p: P.vendingMachine, w: 0.8 }, { p: P.gumball, w: 0.8 }, { p: cart, w: 0.8 },
         { p: P.bench, w: 1 }, { p: P.fakeDoor, w: 1, min: 0.75 }, { p: P.tvStatic, w: 0.6, min: 0.9 },
       ],
-      high: [{ p: M.cam, w: 1.5 }, { p: M.phone, w: 1 }, { p: P.poster, w: 1.2 }, { p: P.wallClock, w: 0.5 }, { p: P.handprints, w: 1, min: 0.85 }],
+      high: [{ p: M.cam, w: 1.5 }, { p: P.poster, w: 1.2 }, { p: P.wallClock, w: 0.5 }, { p: P.handprints, w: 1, min: 0.85 }],
       floor: [{ p: M.sign, w: 1 }, { p: cart, w: 1 }, { p: P.gumball, w: 0.5 }],
       clutter: [
         { p: P.paperScatter, w: 1.5, min: 0.3 }, { p: P.bottles, w: 1, min: 0.4 }, { p: P.puddle, w: 1, min: 0.45 }, { p: P.lostShoe, w: 1, min: 0.5 },
@@ -1670,7 +1677,7 @@ export default {
       density: { wall: 0.3, high: 0.2, floor: 0, clutter: 0.06, ceil: 0 },
       keepClear: keepFor(Z.REST),
       wall: [{ p: P.waterFountain, w: 1 }, { p: M.trash, w: 1 }],
-      high: [{ p: M.phone, w: 2 }, { p: P.poster, w: 0.6 }],
+      high: [{ p: P.poster, w: 1 }, { p: P.wallClock, w: 0.5 }],
       clutter: [{ p: P.puddle, w: 1 }, { p: P.paperScatter, w: 1 }],
     });
     kit.finish();
@@ -1720,7 +1727,7 @@ export default {
       ambience: 'mall',
       reverb: [3.5, 2.2],
       flashlight: false,
-      bake: { hemi: 0.6, dynamic: 0.5, bounce: 0.4, fixtureScale: 0.55, radius: 13, tess: 0.8 },
+      bake: { hemi: 0.6, dynamic: 0.5, bounce: 0.4, fixtureScale: 0.55, radius: 11, tess: 0.9 },
     });
     world.surfaceFn = (x, z) => {
       const [i, j] = g.cellOf(x, z);
@@ -1849,6 +1856,7 @@ export default {
     let paIdx = rng.int(0, PA.length - 1);
     let paPending = -1;
     const lines = depth >= 2 ? [...PA, ...PA_DEEP] : PA;
+    console.warn('mall build ms', Math.round(performance.now() - T0));
     world.onUpdate = (dt, ctx) => {
       const cam = ctx.camera.position;
       const arr = dGeo.attributes.position.array;

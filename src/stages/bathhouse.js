@@ -600,6 +600,25 @@ function boardTexture(key, w, h, bg, lines, { border = null, wood = false } = {}
   });
 }
 
+function wickerTexture() {
+  return canvasTex('bath-wicker', 256, 256, (c, w, h) => {
+    const r = rng32(41);
+    c.fillStyle = '#8a6a3a';
+    c.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 16) {
+      for (let x = 0; x < w; x += 16) {
+        const odd = ((x + y) / 16) % 2;
+        const g = c.createLinearGradient(x, y, odd ? x + 16 : x, odd ? y : y + 16);
+        g.addColorStop(0, '#6a4c24');
+        g.addColorStop(0.5, `rgb(${196 + r() * 20},${160 + r() * 16},${100 + r() * 12})`);
+        g.addColorStop(1, '#6a4c24');
+        c.fillStyle = g;
+        c.fillRect(x + 1, y + 1, 14, 14);
+      }
+    }
+  }, { repeat: true });
+}
+
 function footprintTexture() {
   return canvasTex('bath-foot', 128, 256, (c, w, h) => {
     c.clearRect(0, 0, w, h);
@@ -982,6 +1001,22 @@ function cubbyShelf(k, cols, rows, cw = 0.44, ch = 0.36) {
   return g;
 }
 
+/** Low-poly woven basket for the shelves (the scanned one is used where you look closely). */
+function shelfBasket(k) {
+  const g = new THREE.Group();
+  const m = k.mat('wicker', () => new THREE.MeshStandardMaterial({ map: wickerTexture(), roughness: 0.9 }));
+  const w = 0.38;
+  const d = 0.34;
+  const h = 0.2;
+  k.box(g, w, 0.02, d, m, 0, 0.01, 0);
+  for (const s of [-1, 1]) {
+    k.box(g, w, h, 0.015, m, 0, h / 2, s * d / 2);
+    k.box(g, 0.015, h, d, m, s * w / 2, h / 2, 0);
+  }
+  k.box(g, w + 0.02, 0.025, d + 0.02, k.std(0x6a4c24, 0.8), 0, h, 0);
+  return g;
+}
+
 /** A washing station: tiled ledge, push taps, shower, small mirror. */
 function washStation(k, rng, { fogged = false, bottles = 0, width = 1 } = {}) {
   const g = new THREE.Group();
@@ -991,14 +1026,14 @@ function washStation(k, rng, { fogged = false, bottles = 0, width = 1 } = {}) {
   k.box(g, width, 0.08, 0.02, ledgeMat, 0, 0.47, 0.255);
   // push taps: hot (red cap) and cold (blue cap)
   for (const [x, cap] of [[-0.14, 0xd02020], [0.14, 0x2050d0]]) {
-    k.cyl(g, 0.022, 0.022, 0.12, chrome, x, 0.66, 0.06, PI / 2);
-    k.cyl(g, 0.03, 0.03, 0.03, k.std(cap, 0.3), x, 0.66, 0.13, PI / 2);
-    k.cyl(g, 0.012, 0.009, 0.08, chrome, x, 0.61, 0.1);
+    k.cyl(g, 0.022, 0.022, 0.12, chrome, x, 0.66, 0.06, PI / 2, 0, 0, 8);
+    k.cyl(g, 0.03, 0.03, 0.03, k.std(cap, 0.3), x, 0.66, 0.13, PI / 2, 0, 0, 10);
+    k.cyl(g, 0.012, 0.009, 0.08, chrome, x, 0.61, 0.1, 0, 0, 0, 6);
   }
   // shower on a riser pipe
-  k.cyl(g, 0.012, 0.012, 0.75, chrome, 0.3, 1.02, 0.03);
-  k.cyl(g, 0.045, 0.03, 0.05, chrome, 0.3, 1.42, 0.08, -0.9);
-  k.cyl(g, 0.012, 0.012, 0.07, chrome, 0.3, 1.4, 0.045, PI / 2);
+  k.cyl(g, 0.012, 0.012, 0.75, chrome, 0.3, 1.02, 0.03, 0, 0, 0, 6);
+  k.cyl(g, 0.045, 0.03, 0.05, chrome, 0.3, 1.42, 0.08, -0.9, 0, 0, 10);
+  k.cyl(g, 0.012, 0.012, 0.07, chrome, 0.3, 1.4, 0.045, PI / 2, 0, 0, 6);
   // mirror
   const mirror = fogged
     ? k.mat('mirrorFog', () => new THREE.MeshStandardMaterial({ color: 0xb8c4c6, roughness: 0.55, metalness: 0.6 }))
@@ -1007,8 +1042,8 @@ function washStation(k, rng, { fogged = false, bottles = 0, width = 1 } = {}) {
   k.plane(g, 0.37, 0.49, mirror, 0, 1.2, 0.0125);
   for (let b = 0; b < bottles; b++) {
     const col = rng.pick([0xf4f0e8, 0x3a8ad0, 0xe8a0b0, 0x40a070]);
-    k.cyl(g, 0.03, 0.032, 0.17, k.std(col, 0.35), -0.3 + b * 0.075, 0.61, 0.12);
-    k.cyl(g, 0.018, 0.018, 0.03, k.std(0xffffff, 0.4), -0.3 + b * 0.075, 0.71, 0.12);
+    k.cyl(g, 0.03, 0.032, 0.17, k.std(col, 0.35), -0.3 + b * 0.075, 0.61, 0.12, 0, 0, 0, 8);
+    k.cyl(g, 0.018, 0.018, 0.03, k.std(0xffffff, 0.4), -0.3 + b * 0.075, 0.71, 0.12, 0, 0, 0, 6);
   }
   return g;
 }
@@ -1084,12 +1119,11 @@ function milkFridge(k) {
       return new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 });
     });
     for (let b = 0; b < 6; b++) {
-      for (const z of [-0.08, 0.1]) {
-        const x = -0.22 + b * 0.088;
-        k.cyl(g, 0.028, 0.032, 0.14, glass, x, y + 0.08, z, 0, 0, 0, 10);
-        k.cyl(g, 0.022, 0.028, 0.03, glass, x, y + 0.165, z, 0, 0, 0, 10);
-        k.mesh(g, new THREE.CircleGeometry(0.022, 12), cap, x, y + 0.181, z, -PI / 2);
-      }
+      const x = -0.22 + b * 0.088;
+      const z = 0.08;
+      k.cyl(g, 0.028, 0.032, 0.14, glass, x, y + 0.08, z, 0, 0, 0, 8);
+      k.cyl(g, 0.022, 0.028, 0.03, glass, x, y + 0.165, z, 0, 0, 0, 8);
+      k.mesh(g, new THREE.CircleGeometry(0.022, 10), cap, x, y + 0.181, z, -PI / 2);
     }
   }
   // glass door
@@ -1745,7 +1779,6 @@ export default {
     const stoolWood = modelParts('wooden_stool_01', 0.55);
     const stoolSize = modelSize('wooden_stool_01').clone().multiplyScalar(0.55);
     const basketParts = modelParts('wicker_basket_01', 0.9);
-    const basketSize = modelSize('wicker_basket_01').clone().multiplyScalar(0.9);
     const addBucket = (m, s, x, y, z, yaw, upside = false, key = 'b') => {
       const mat4 = upside ? matAt(x, y + 0.115, z, yaw, 1, PI) : matAt(x, y, z, yaw);
       const ref = batch.add(`bucket:${m ? m.idx : 't'}:${key}`, kerorinParts(), mat4);
@@ -1887,7 +1920,7 @@ export default {
           for (const [cx, cy, cz] of shelf.userData.cells) {
             if (r2() < 0.25) continue;
             const wp = new THREE.Vector3(cx, cy, cz).applyMatrix4(shelf.matrixWorld);
-            batch.add(`basket:${m.idx}`, basketParts, matAt(wp.x, wp.y, wp.z, p.yaw + (r2() - 0.5) * 0.3));
+            kit.add(shelfBasket(kit), wp.x, wp.z, p.yaw + (r2() - 0.5) * 0.2, { y: wp.y });
           }
         }
         {
@@ -1897,7 +1930,7 @@ export default {
           for (const [cx, cy, cz] of shelf.userData.cells) {
             if (r2() < 0.35) continue;
             const wp = new THREE.Vector3(cx, cy, cz).applyMatrix4(shelf.matrixWorld);
-            batch.add(`basket:${m.idx}`, basketParts, matAt(wp.x, wp.y, wp.z, p.yaw + (r2() - 0.5) * 0.3));
+            kit.add(shelfBasket(kit), wp.x, wp.z, p.yaw + (r2() - 0.5) * 0.2, { y: wp.y });
           }
         }
         {
@@ -2029,7 +2062,7 @@ export default {
             const d = 0.62 + r2() * 0.1;
             const sx = p.x + fx * d;
             const sz = p.z + fz * d;
-            const nice = r2() < 0.35;
+            const nice = r2() < 0.12;
             if (nice) batch.add(`stoolw:${m.idx}`, stoolWood, matAt(sx, Y_BATH, sz, p.yaw + (r2() - 0.5) * 0.4));
             else batch.add(`stool:${m.idx}`, plasticStoolParts(), matAt(sx, Y_BATH, sz, p.yaw + (r2() - 0.5) * 0.3));
             const topY = nice ? stoolSize.y : 0.25;
@@ -2251,7 +2284,7 @@ export default {
         kit.add(P.stoneLantern.build(kit, rng), x, z, 0, { y: Y_TERR, collide: [0.5, 0.5] });
         bakeSources.push({ pos: new THREE.Vector3(x, Y_TERR + 1.3, z), color: new THREE.Color(1, 0.65, 0.3), intensity: 3.2, range: 7 });
       }
-      for (let a = 0; a < PI * 2; a += PI / 9) {
+      for (let a = 0; a < PI * 2; a += PI / 6) {
         const x = rcx + Math.cos(a) * 7.9;
         const z = rcz + Math.sin(a) * 3.2;
         if (Math.sin(a) > 0.3 && Math.abs(Math.cos(a)) < 0.6) continue; // the way in
@@ -2819,7 +2852,7 @@ export default {
       ambience: 'bath',
       reverb: [3.5, 3],
       flashlight: false,
-      bake: { fixtureScale: 0.2, bounce: 0.5, hemi: 0.5, dynamic: 0.45 },
+      bake: { fixtureScale: 0.2, bounce: 0.5, hemi: 0.5, dynamic: 0.45, radius: 8, tess: 0.8 },
     });
   },
 

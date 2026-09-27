@@ -321,6 +321,20 @@ export class Mannequin {
     return this.broken ? 'Tidy up the mannequin' : 'Poke the mannequin';
   }
 
+  setPose(name) {
+    applyPose(this.fig.userData.rig, name);
+  }
+
+  /** Falls to pieces with a clatter. */
+  collapse(game = this.world.game) {
+    this.broken = true;
+    this.setPose('collapse');
+    game.audio.clack(this.panner, 0.7);
+    setTimeout(() => game.audio.clack(this.panner, 1.1), 120);
+    setTimeout(() => game.audio.clack(this.panner, 0.8), 260);
+    game.pulseStatic(0.5);
+  }
+
   pickPose(unease) {
     const creepy = this.mode === 'creepy' || (this.mode === 'mixed' && this.world.rng.chance(Math.min(0.85, unease * 0.7)));
     return this.world.rng.pick(creepy ? CREEPY : FUNNY);
@@ -355,12 +369,7 @@ export class Mannequin {
         this.moved = false;
         if (dist < 1.6 && !this.broken) {
           // right behind you: it comes apart
-          this.broken = true;
-          applyPose(this.fig.userData.rig, 'collapse');
-          game.audio.clack(this.panner, 0.7);
-          setTimeout(() => game.audio.clack(this.panner, 1.1), 120);
-          setTimeout(() => game.audio.clack(this.panner, 0.8), 260);
-          game.pulseStatic(0.5);
+          this.collapse(game);
           this.presence = 0.9;
         } else if (dist < 7 && unease > 0.5) {
           this.presence = 0.5;

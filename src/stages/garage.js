@@ -1405,7 +1405,7 @@ export default {
       { w: 0.25, f: 'barrier' },
       { w: 0.6, f: 'tyres', min: 0.15 },
       { w: 0.4, f: 'truck', min: 0.2 },
-      { w: 0.3, f: 'cans', min: 0.1 },
+      { w: 0.12, f: 'cans', min: 0.1 },
       { w: 0.5, f: 'trolley', min: 0.3 },
       { w: 0.6, f: 'rubbish', min: 0.35 },
       { w: 0.3, f: 'bin' },
@@ -1414,13 +1414,16 @@ export default {
       { w: 0.4, f: 'shoes', min: 0.7 },
     ];
     const puddles = [];
+    // scanned props are dense meshes: cap the heaviest ones
+    const caps = { barrier: 3, cans: 3, tyres: 6 };
     for (const b of bays) {
       if (b.shaft || blocked.has(K(b.i, b.row.j))) continue;
-      const opts = EMPTY.filter((e) => b.u >= (e.min ?? -1) && b.u <= (e.max ?? 9));
+      const opts = EMPTY.filter((e) => b.u >= (e.min ?? -1) && b.u <= (e.max ?? 9) && (caps[e.f] ?? 1) > 0);
       const tot = opts.reduce((s, e) => s + e.w, 0);
       let r = rng.next() * tot;
       const e = opts.find((o) => (r -= o.w) <= 0) || opts[0];
       if (!e.f) continue;
+      if (caps[e.f]) caps[e.f]--;
       blocked.add(K(b.i, b.row.j));
       blocked.add(K(b.i, b.row.j + 1));
       const inward = -b.row.lane;
@@ -1451,7 +1454,7 @@ export default {
         const [x, z] = at(4.3, rng.float(-0.5, 0.5));
         kit.add(Mdl.truck.build(kit, rng), x, z, yawIn + PI, { y: b.y, collide: [0.6, 0.6] });
       } else if (e.f === 'cans') {
-        for (let n = rng.int(1, 2); n > 0; n--) {
+        for (let n = 1; n > 0; n--) {
           const [x, z] = at(rng.float(3.5, 4.5), rng.float(-0.8, 0.8));
           kit.add(Mdl.can.build(kit, rng), x, z, rng.float(0, 6), { y: b.y });
         }
@@ -1461,7 +1464,7 @@ export default {
       } else if (e.f === 'rubbish') {
         const [x, z] = at(4.1, rng.float(-0.6, 0.6));
         kit.add(Mdl.bag.build(kit, rng), x, z, rng.float(0, 6), { y: b.y });
-        kit.add(Mdl.box.build(kit, rng), x + rng.float(-0.8, 0.8), z + inward * -0.3, rng.float(0, 6), { y: b.y, collide: [0.5, 0.5] });
+        if (rng.chance(0.4)) kit.add(Mdl.box.build(kit, rng), x + rng.float(-0.8, 0.8), z + inward * -0.3, rng.float(0, 6), { y: b.y, collide: [0.5, 0.5] });
         if (rng.chance(0.5)) kit.add(P.paperScatter.build(kit, rng), x, z - inward * 1.5, rng.float(0, 6), { y: b.y });
       } else if (e.f === 'bin') {
         const [x, z] = at(4.3);
@@ -1695,7 +1698,7 @@ export default {
     }
     for (let k = 0; k < 3; k++) kit.add(P.modelProp('power_box_01', { place: 'high', collide: false }).build(kit, rng), 25 * CS + 0.01, 18.6 * CS + k * 0.9, PI / 2, { y: 1.3 });
     kit.add(P.modelProp('utility_box_01').build(kit, rng), 29 * CS - 0.25, 18.6 * CS, -PI / 2, { collide: [0.5, 0.5] });
-    for (let k = 0; k < 3; k++) kit.add(Mdl.can.build(kit, rng), 28.6 * CS + rng.float(-0.3, 0.3), 19.9 * CS + k * 0.3, rng.float(0, 6));
+    for (let k = 0; k < 2; k++) kit.add(Mdl.can.build(kit, rng), 28.6 * CS + rng.float(-0.3, 0.3), 19.9 * CS + k * 0.3, rng.float(0, 6));
     plate('DANGER', 'High voltage', 26.4 * CS, 1.3, 21 * CS - 0.57, PI, '#e0b21c', '#141414');
     // stairwell lobby and landing
     kit.add(P.modelProp('korean_fire_extinguisher_01').build(kit, rng), 32.8 * CS, 18.2 * CS, -PI / 2);
@@ -1806,7 +1809,7 @@ export default {
       wall: [
         { p: P.extinguisher, w: 1.5 }, { p: hoseBox, w: 0.8 }, { p: P.modelProp('utility_box_01'), w: 1 },
         { p: Mdl.bin, w: 0.8 }, { p: tyreStack, w: 0.6, min: 0.2 }, { p: P.modelProp('trashbag', { jitter: 3 }), w: 0.8, min: 0.35 },
-        { p: P.modelProp('cardboard_box_01', { jitter: 0.4 }), w: 0.6, min: 0.3 }, { p: P.modelProp('hand_truck'), w: 0.4, min: 0.4 },
+        { p: P.modelProp('cardboard_box_01', { jitter: 0.4 }), w: 0.3, min: 0.3 }, { p: P.modelProp('hand_truck'), w: 0.4, min: 0.4 },
       ],
       high: [
         { p: P.modelProp('security_camera_01', { place: 'high', collide: false }), w: 1.2, o: {} },
@@ -1815,7 +1818,7 @@ export default {
       ],
       clutter: [
         { p: P.paperScatter, w: 1 }, { p: P.bottles, w: 0.8 }, { p: P.trafficCone, w: 0.6, min: 0.2 },
-        { p: P.lostShoe, w: 0.5, min: 0.5 }, { p: P.modelProp('metal_jerrycan', { jitter: 3 }), w: 0.4, min: 0.3 },
+        { p: P.lostShoe, w: 0.5, min: 0.5 },
       ],
       ceil: [{ p: P.hangingWires, w: 1, min: 0.45 }],
     });
