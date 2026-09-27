@@ -1,0 +1,67 @@
+// Settings and progress, stored per browser. Storage can be unavailable
+// (private windows, sandboxed frames), so every access is guarded.
+const SETTINGS_KEY = 'liminal-drift.settings.v1';
+const PROGRESS_KEY = 'liminal-drift.progress.v1';
+
+export const DEFAULT_SETTINGS = {
+  sensitivity: 1,
+  fov: 75,
+  master: 0.8,
+  music: 0.7,
+  sfx: 0.8,
+  quality: 'mid',
+  invertY: false,
+  headBob: true,
+  reduceEffects: false,
+  showFps: false,
+};
+
+function read(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function write(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable: keep in memory only */
+  }
+}
+
+export function loadSettings() {
+  const stored = read(SETTINGS_KEY) || {};
+  const s = { ...DEFAULT_SETTINGS, ...stored };
+  if (!stored.quality) {
+    // First run: pick a sensible default for phones.
+    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+    s.quality = coarse ? 'low' : 'mid';
+  }
+  return s;
+}
+
+export function saveSettings(s) {
+  write(SETTINGS_KEY, s);
+}
+
+export function loadProgress() {
+  return read(PROGRESS_KEY) || { cleared: {} };
+}
+
+export function recordClear(progress, stageId, time) {
+  const prev = progress.cleared[stageId];
+  const best = prev ? Math.min(prev.best, time) : time;
+  progress.cleared[stageId] = { best, count: (prev?.count || 0) + 1 };
+  write(PROGRESS_KEY, progress);
+  return { best, isRecord: !prev || time < prev.best };
+}
+
+export function formatTime(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}

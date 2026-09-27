@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Liminal Drift</title>
+  <meta name="description" content="three.js で作ったリミナルスペース探索ゲーム。黄色い部屋、プールルーム、パステルの夢、深夜のホテル、黄昏の校舎をさまよう。" />
+  <meta name="theme-color" content="#0d0f12" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="view" aria-label="ゲーム画面"></canvas>
+    <div id="fade" aria-hidden="true"></div>
+    <div id="static" aria-hidden="true"></div>
+
+    <!-- ===== HUD ===== -->
+    <div id="hud" hidden>
+      <div class="hud-tl">
+        <div class="rec"><span class="rec-dot"></span>REC <span id="hud-clock">00:00</span></div>
+        <div id="hud-stage" class="hud-stage"></div>
+        <div id="hud-objective" class="hud-objective"></div>
+      </div>
+      <div class="hud-tr">
+        <div class="minimap-wrap">
+          <canvas id="minimap" width="176" height="176"></canvas>
+          <span class="minimap-key">M で拡大</span>
+        </div>
+      </div>
+      <div class="hud-bl">
+        <div class="meter" id="meter-stamina"><span class="meter-label">体力</span><span class="meter-track"><span class="meter-fill"></span></span></div>
+        <div class="meter" id="meter-sanity"><span class="meter-label">正気</span><span class="meter-track"><span class="meter-fill"></span></span></div>
+        <div class="meter" id="meter-battery" hidden><span class="meter-label">電池</span><span class="meter-track"><span class="meter-fill"></span></span></div>
+      </div>
+      <div id="crosshair" aria-hidden="true"></div>
+      <div id="prompt" hidden><kbd id="prompt-key">E</kbd><span id="prompt-text"></span></div>
+      <div id="toasts" aria-live="polite"></div>
+      <div id="controls-hint" class="controls-hint"></div>
+      <div id="fps" hidden></div>
+    </div>
+
+    <div id="dialog" hidden>
+      <div class="dlg-name" id="dlg-name"></div>
+      <div class="dlg-text" id="dlg-text"></div>
+      <div class="dlg-next" id="dlg-next">E / クリックで次へ</div>
+    </div>
+
+    <div id="bigmap" hidden>
+      <div class="bigmap-panel">
+        <div class="bigmap-head"><span id="bigmap-title">地図</span><span class="bigmap-close">M / Esc で閉じる</span></div>
+        <canvas id="bigmap-canvas" width="720" height="720"></canvas>
+        <div class="bigmap-legend">
+          <span><i class="lg lg-you"></i>現在地</span>
+          <span><i class="lg lg-frag"></i>欠片</span>
+          <span><i class="lg lg-exit"></i>出口</span>
+          <span><i class="lg lg-npc"></i>住人</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Touch controls ===== -->
+    <div id="touch" hidden>
+      <div id="touch-move" class="touch-zone touch-move"><div class="stick-base" id="stick-base"><div class="stick-knob" id="stick-knob"></div></div></div>
+      <div id="touch-look" class="touch-zone touch-look"></div>
+      <div class="touch-buttons">
+        <button class="tbtn" id="tbtn-interact" data-action="interact">調べる</button>
+        <button class="tbtn" id="tbtn-run" data-action="run">走る</button>
+        <button class="tbtn" id="tbtn-light" data-action="flashlight">ライト</button>
+        <button class="tbtn tbtn-small" id="tbtn-map" data-action="map">地図</button>
+      </div>
+      <button class="tbtn tbtn-pause" id="tbtn-pause" data-action="pause" aria-label="一時停止">II</button>
+    </div>
+
+    <!-- ===== Title ===== -->
+    <section id="screen-title" class="screen screen-title" hidden>
+      <div class="title-block">
+        <p class="eyebrow">境界漂流 — 記録テープ No.0</p>
+        <h1 class="logo"><span class="logo-a">LIMINAL</span><span class="logo-b">DRIFT</span></h1>
+        <p class="tagline">どこでもない場所を歩く。<br />記憶の欠片を三つ集めて、出口を探せ。</p>
+        <nav class="menu" aria-label="メインメニュー">
+          <button class="btn btn-primary" data-nav="select">探索をはじめる</button>
+          <button class="btn" data-nav="help">遊び方</button>
+          <button class="btn" data-nav="settings">設定</button>
+        </nav>
+        <p class="title-foot">ヘッドホン推奨 ・ 音はクリック後に鳴ります</p>
+      </div>
+    </section>
+
+    <!-- ===== Stage select ===== -->
+    <section id="screen-select" class="screen screen-select" hidden>
+      <header class="screen-head">
+        <button class="btn btn-ghost" data-nav="back">← 戻る</button>
+        <div>
+          <p class="eyebrow">行き先を選ぶ</p>
+          <h2 class="screen-title-text">階層一覧</h2>
+        </div>
+      </header>
+      <div id="stage-list" class="stage-list" role="list"></div>
+      <p class="select-foot">カーソルを合わせると背景がその階層に切り替わります ・ ←→ で選択、Enter で決定</p>
+    </section>
+
+    <!-- ===== Stage intro card ===== -->
+    <section id="screen-card" class="screen screen-card" hidden>
+      <div class="card-inner">
+        <p class="card-level" id="card-level"></p>
+        <h2 class="card-title" id="card-title"></h2>
+        <p class="card-sub" id="card-sub"></p>
+        <p class="card-goal" id="card-goal"></p>
+        <p class="card-tip" id="card-tip"></p>
+        <button class="btn btn-primary" id="card-go">クリックして入る</button>
+      </div>
+    </section>
+
+    <!-- ===== Pause ===== -->
+    <section id="screen-pause" class="screen screen-pause" hidden>
+      <div class="panel">
+        <p class="eyebrow">一時停止</p>
+        <h2 class="panel-title" id="pause-stage"></h2>
+        <dl class="pause-stats">
+          <div><dt>経過</dt><dd id="pause-time">00:00</dd></div>
+          <div><dt>欠片</dt><dd id="pause-frags">0 / 3</dd></div>
+        </dl>
+        <nav class="menu">
+          <button class="btn btn-primary" data-act="resume">再開する</button>
+          <button class="btn" data-act="restart">この階層をやり直す</button>
+          <button class="btn" data-nav="help">遊び方</button>
+          <button class="btn" data-nav="settings">設定</button>
+          <button class="btn btn-ghost" data-act="quit">階層一覧へ戻る</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- ===== Settings ===== -->
+    <section id="screen-settings" class="screen screen-settings" hidden>
+      <div class="panel panel-wide">
+        <p class="eyebrow">設定</p>
+        <h2 class="panel-title">操作と表示</h2>
+        <form id="settings-form" class="settings-grid" autocomplete="off">
+          <label class="set-row" for="set-sens"><span>視点感度</span><input type="range" id="set-sens" min="0.2" max="3" step="0.05" /><output id="out-sens"></output></label>
+          <label class="set-row" for="set-fov"><span>視野角</span><input type="range" id="set-fov" min="60" max="100" step="1" /><output id="out-fov"></output></label>
+          <label class="set-row" for="set-master"><span>全体音量</span><input type="range" id="set-master" min="0" max="1" step="0.05" /><output id="out-master"></output></label>
+          <label class="set-row" for="set-music"><span>環境音・音楽</span><input type="range" id="set-music" min="0" max="1" step="0.05" /><output id="out-music"></output></label>
+          <label class="set-row" for="set-sfx"><span>効果音</span><input type="range" id="set-sfx" min="0" max="1" step="0.05" /><output id="out-sfx"></output></label>
+          <div class="set-row"><span>画質</span>
+            <div class="seg" role="radiogroup" aria-label="画質">
+              <label><input type="radio" name="quality" id="set-q-low" value="low" /><span>軽量</span></label>
+              <label><input type="radio" name="quality" id="set-q-mid" value="mid" /><span>標準</span></label>
+              <label><input type="radio" name="quality" id="set-q-high" value="high" /><span>高品質</span></label>
+            </div>
+          </div>
+          <label class="set-row set-check" for="set-invert"><span>上下の視点操作を反転</span><input type="checkbox" id="set-invert" /></label>
+          <label class="set-row set-check" for="set-bob"><span>歩行時の揺れ</span><input type="checkbox" id="set-bob" /></label>
+          <label class="set-row set-check" for="set-reduce"><span>画面効果を弱める（点滅・歪みを抑える）</span><input type="checkbox" id="set-reduce" /></label>
+          <label class="set-row set-check" for="set-fps"><span>FPS を表示</span><input type="checkbox" id="set-fps" /></label>
+        </form>
+        <nav class="menu menu-row">
+          <button class="btn btn-primary" data-nav="back">閉じる</button>
+          <button class="btn btn-ghost" id="settings-reset">初期値に戻す</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- ===== Help ===== -->
+    <section id="screen-help" class="screen screen-help" hidden>
+      <div class="panel panel-wide">
+        <p class="eyebrow">遊び方</p>
+        <h2 class="panel-title">歩いて、集めて、抜け出す</h2>
+        <div class="help-cols">
+          <div>
+            <h3>目的</h3>
+            <p>各階層に散らばる<strong>記憶の欠片</strong>を 3 つ集めると、どこかの<strong>出口</strong>が開きます。地図に出口の位置が記されます。</p>
+            <h3>住人とクリーチャー</h3>
+            <p>話しかけられる住人がいます。攻略のヒントをくれることも。敵意のある存在に触れられると、その階層は最初からやり直しです。</p>
+            <p>正気が尽きても同じです。暗闇や、何かの気配が正気を削ります。</p>
+          </div>
+          <div>
+            <h3>キーボードとマウス</h3>
+            <table class="keys">
+              <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>移動（矢印キーも可）</td></tr>
+              <tr><td>マウス</td><td>見回す（画面をクリックで視点固定）</td></tr>
+              <tr><td><kbd>Shift</kbd></td><td>走る（体力を使い、音が出る）</td></tr>
+              <tr><td><kbd>E</kbd></td><td>話す・調べる</td></tr>
+              <tr><td><kbd>F</kbd></td><td>懐中電灯</td></tr>
+              <tr><td><kbd>M</kbd></td><td>地図を拡大</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>一時停止</td></tr>
+            </table>
+            <h3>スマホ・ゲームパッド</h3>
+            <p>画面左で移動、右をなぞって見回し。ボタンで走る・調べる・ライト。ゲームパッドは左スティック移動、右スティック視点、A で調べる、RB で走る、Y でライト、Start で一時停止。</p>
+          </div>
+        </div>
+        <nav class="menu menu-row"><button class="btn btn-primary" data-nav="back">閉じる</button></nav>
+      </div>
+    </section>
+
+    <!-- ===== Result ===== -->
+    <section id="screen-result" class="screen screen-result" hidden>
+      <div class="panel">
+        <p class="eyebrow">脱出記録</p>
+        <h2 class="panel-title" id="result-title"></h2>
+        <p class="result-line" id="result-line"></p>
+        <dl class="pause-stats">
+          <div><dt>記録</dt><dd id="result-time"></dd></div>
+          <div><dt>最速</dt><dd id="result-best"></dd></div>
+        </dl>
+        <ul class="memories" id="result-memories"></ul>
+        <nav class="menu">
+          <button class="btn btn-primary" data-act="next" id="result-next">次の階層へ</button>
+          <button class="btn" data-act="restart">もう一度歩く</button>
+          <button class="btn btn-ghost" data-act="quit">階層一覧へ戻る</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- ===== Game over ===== -->
+    <section id="screen-gameover" class="screen screen-gameover" hidden>
+      <div class="panel panel-dark">
+        <p class="eyebrow eyebrow-danger">記録が途切れた</p>
+        <h2 class="panel-title" id="over-title"></h2>
+        <p class="result-line" id="over-line"></p>
+        <nav class="menu">
+          <button class="btn btn-primary" data-act="restart">もう一度</button>
+          <button class="btn btn-ghost" data-act="quit">階層一覧へ戻る</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- ===== Resume overlay (pointer lock lost / focus) ===== -->
+    <button id="resume-hint" class="resume-hint" hidden>クリックして視点を固定</button>
+
+    <div id="boot" class="boot"><span>テープを巻き戻しています…</span></div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
