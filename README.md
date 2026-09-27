@@ -19,6 +19,36 @@ PBR normal and roughness maps), and every sound is synthesised with the Web Audi
   flickering lights, murkier water, greyer skies, more holes, and apparitions that stand and watch.
   They never hurt you.
 - Some residents will talk to you.
+- **Crossed signals:** once you've drifted a few times, a level may have a patch of somewhere you've
+  already been leaking into it. Walls, floor and ceiling from the other level show through in corrupted
+  blocks, its furniture turns up, one of its residents wanders in looking confused, its ambience bleeds
+  over this one and the HUD can't decide which level you're on.
+
+## Residents and apparitions
+
+Every character is sculpted in code: signed-distance primitives (spheres, ellipsoids, round cones,
+boxes, tori) are blended with smooth unions and carved with smooth subtractions, then turned into a
+mesh with narrow-band surface nets. Each primitive carries a paint region and a bone, so the same pass
+gives vertex colours, per-vertex roughness and automatic skin weights. Heads and hands are sculpted at
+a finer resolution and ride on their bones; eyes are real glossy eyeballs. Characters are animated
+procedurally (walk cycles, breathing, head tracking, poses) and pick up the level's baked light through
+a light probe.
+
+- **The Watcher** stands at the end of hallways. Its head follows you further than a neck should
+  turn, it tilts at the wrong moments, and if you stare long enough it gives you a slow, polite wave.
+  Deeper in, one walks upside down along the ceiling.
+- **Mannequins** only move when nobody is looking. Each time you look back they're closer and posing
+  differently: peace signs and dabs while things are calm, reaching for you when they aren't. If one
+  gets right behind you and you turn round, it falls to pieces. You can poke them.
+- **Something peeks round corners** and ducks back when you look straight at it.
+- **The grin** in the dark hotel has a mouth full of teeth; shine your light on it and it shakes its
+  head very fast before it goes.
+- **A cat** turns up where you're about to look, loafing or sitting, and sometimes on the ceiling.
+  You can pet it.
+- **A robot vacuum** has been cleaning the same room since 1998. Far enough out, it follows you.
+- Residents: the Drifter (asleep in a hazmat suit, snoring through the mask), a ghostly bellboy who
+  bows, a station attendant who bows properly, students made of dusk, a white fox that sits like a
+  shrine statue, and more in the new levels.
 
 ## Levels
 
@@ -93,10 +123,12 @@ npm run preview
 
 ```
 src/
-  core/      grid (2.5D height field), procedural surfaces and textures, audio, input,
-             post-processing, light pool
-  game/      game loop and drifting, player (steering assist, gravity), world (collision, unease, doors)
-  entities/  residents (NPC), doors to other levels, apparitions
+  core/      grid (2.5D height field), SDF sculpting (surface nets, auto skinning), procedural
+             surfaces and textures, audio, input, post-processing, light pool
+  game/      game loop and drifting, player (steering assist, gravity), world (collision, unease, doors),
+             crossed signals (levels bleeding into each other)
+  entities/  sculpted characters (figures: humanoid and quadruped rigs, poses; looks: the cast),
+             residents (NPC), doors to other levels, apparitions
   props/     prop kit (batched merging), prop library, canvas-painted signs and posters
   stages/    one module per level, plus shared shell/decoration helpers
   ui/        screens, HUD, maps

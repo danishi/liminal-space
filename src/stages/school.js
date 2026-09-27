@@ -6,8 +6,10 @@ import { mesh, buildShell, ceilingFixtures, doorModel, decorate, stairRun, windo
 import { photo, hdri } from '../core/assets.js';
 import { PropKit } from '../props/kit.js';
 import * as P from '../props/library.js';
-import { Watcher } from '../entities/creatures.js';
-import { NPC } from '../entities/npc.js';
+import { Watcher, Peeker } from '../entities/creatures.js';
+import { LOOKS } from '../entities/looks.js';
+import { setFigureOpacity, idlePose, lookAt } from '../entities/figures.js';
+import { NPC, strayNPC } from '../entities/npc.js';
 
 const H = 3.0;
 const LINTEL = 2.3;
@@ -15,30 +17,9 @@ const UP = 3.0; // height of the upper wing
 const DUSK = 150;
 
 function studentModel() {
-  const g = new THREE.Group();
-  const shadow = new THREE.MeshStandardMaterial({ color: 0x0c0b10, roughness: 1, transparent: true, opacity: 0.92 });
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.35, 4, 8), shadow);
-  torso.position.y = 0.95;
-  g.add(torso);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 12), shadow);
-  head.position.y = 1.38;
-  g.add(head);
-  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.26, 0.3, 12), shadow);
-  skirt.position.y = 0.62;
-  g.add(skirt);
-  for (const x of [-0.08, 0.08]) {
-    const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.4, 3, 6), shadow);
-    leg.position.set(x, 0.3, 0.12);
-    leg.rotation.x = -0.3;
-    g.add(leg);
-  }
-  const eyeMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 1.2, 1.0) });
-  for (const x of [-0.045, 0.045]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.013, 6, 6), eyeMat);
-    e.position.set(x, 1.4, 0.13);
-    g.add(e);
-  }
-  return g;
+  const fig = LOOKS.student();
+  setFigureOpacity(fig, 0.95);
+  return fig;
 }
 
 const deskSet = {
@@ -62,6 +43,7 @@ export default {
     textures: ['linoleum_brown', 'beige_wall_001', 'painted_concrete', 'ceiling_interior'],
     models: ['SchoolDesk_01', 'SchoolChair_01', 'wall_clock', 'plastic_broom', 'metal_trash_can', 'fire_alarm'],
     hdris: ['stuttgart_suburbs'],
+    looks: ['student', ['watcher', { body: 0x0b0b12, coat: true, height: 2.3 }]],
   },
 
   build(world) {
@@ -302,10 +284,54 @@ export default {
       const model = studentModel();
       model.position.set((r.i0 + 1.5) * cs, r.h, (r.j0 + 1.2) * cs);
       model.rotation.y = -Math.PI / 2;
-      const npc = new NPC(world, { name: 'a student who stayed behind', pos: model.position.clone(), model, voice: 1.25 - n * 0.2, radius: 0.3, conversations: lines[n] });
+      const npc = new NPC(world, { name: 'a student who stayed behind', pos: model.position.clone(), model, voice: 1.25 - n * 0.2, radius: 0.3, face: false, conversations: lines[n] });
       npc.aimHeight = 1.2;
+      // stands facing the blackboard; only the head turns to follow you, a beat too late
+      const eye = new THREE.Vector3();
+      const ahead = new THREE.Vector3(-3, 1.4, 0);
+      const slow = new THREE.Vector3().copy(model.position).add(ahead);
+      npc.idle = (dt, ctx) => {
+        const rig = model.userData.rig;
+        idlePose(rig, npc.t + n * 3, { sway: 0.4 });
+        rig.rot('armL', -0.1, 0, 0.03);
+        rig.rot('armR', -0.1, 0, -0.03);
+        rig.rot('foreL', -0.9, 0.3, 0);
+        rig.rot('foreR', -0.9, -0.3, 0);
+        const near = ctx.player.pos.distanceTo(model.position) < 7;
+        if (near) eye.copy(ctx.camera.position);
+        else eye.copy(model.position).add(ahead);
+        slow.lerp(eye, Math.min(1, dt * 0.8));
+        lookAt(model, slow, { max: 1.1, over: 1.5 });
+      };
       world.add(npc);
     });
+    if (!world.attract && world.depth >= 1) world.add(new Peeker(world, { figure: () => LOOKS.student() }));
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'school',
+    looks: ['student'],
+    surfaces: () => ({
+      wall: { mat: photo('beige_wall_001', { uvScale: 2.5, color: 0xf4ecdc }), uv: 2.5 },
+      floor: { mat: photo('linoleum_brown', { uvScale: 2.4, roughness: 0.75 }), uv: 2.4 },
+      ceil: { mat: photo('ceiling_interior', { uvScale: 3, color: 0xf2eee4 }), uv: 3 },
+    }),
+    props: {
+      wall: [{ p: P.shoeCubbies, w: 1 }, { p: P.lockers, w: 1 }, { p: P.bulletinBoard, w: 1 }],
+      high: [{ p: P.teruteru, w: 1 }],
+      floor: [{ p: deskSet, w: 3 }],
+      clutter: [{ p: P.paperScatter, w: 1 }],
+    },
+    stray: (world, pos) => strayNPC(world, pos, {
+      name: 'a student who stayed behind',
+      model: studentModel(),
+      voice: 1.2,
+      lines: [
+        ['Is this still school? The chime hasn’t rung.'],
+        ['I think I followed someone home.', 'It wasn’t my home.'],
+      ],
+    }),
   },
 
   makeDoor(world, dest) {

@@ -7,7 +7,7 @@ import { PropKit } from '../props/kit.js';
 import { photo, model } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { NPC } from '../entities/npc.js';
-import { Watcher } from '../entities/creatures.js';
+import { Watcher, Peeker, StrayCat, Mannequin } from '../entities/creatures.js';
 
 const H = 4.2;
 const LINTEL = 2.9;
@@ -32,6 +32,7 @@ export default {
   assets: {
     textures: ['long_white_tiles'],
     models: ['rubber_duck_toy', 'lifebuoy', 'potted_plant_02', 'plastic_monobloc_chair_01'],
+    looks: [['watcher', { body: 0x1a2426 }], ['mannequin', 1], 'cat'],
   },
 
   build(world) {
@@ -270,6 +271,37 @@ export default {
       world.add(little);
     }
     if (!world.attract && world.depth >= 2) world.add(new Watcher(world, { look: { body: 0x1a2426 } }));
+    if (!world.attract) {
+      if (world.depth >= 1) world.add(new Peeker(world, { look: { body: 0x1a2426 } }));
+      if (rng.chance(0.3)) world.add(new StrayCat(world));
+      // someone left a mannequin sunbathing; it changes position when you're not looking
+      const dry = world.pickFarCells(1, { minFrac: 0.25, spacing: 4, filter: (i, j) => g.get(i, j) === FLOOR && !g.ramp[j * W + i] && g.countSolidNeighbors(i, j) === 0 })[0];
+      if (dry) {
+        const c = g.center(...dry);
+        world.add(new Mannequin(world, { pos: new THREE.Vector3(c.x, g.heightOf(...dry), c.z), yaw: rng.float(0, 6.28), variant: 1, mode: world.depth >= 2 ? 'mixed' : 'funny', moves: world.depth >= 1, pose: 'flex' }));
+      }
+    }
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'pool',
+    surfaces: () => {
+      const white = photo('long_white_tiles', { uvScale: 1, roughness: 0.45, color: new THREE.Color(1.3, 1.34, 1.32) });
+      return { wall: { mat: white, uv: 2 }, floor: { mat: white, uv: 2 }, ceil: { mat: white, uv: 2 } };
+    },
+    props: {
+      wall: [{ p: P.lounger, w: 2 }, { p: P.towelStack, w: 1 }, { p: P.lifeguardChair, w: 0.5 }],
+      floor: [{ p: P.lounger, w: 1 }, { p: P.pottedPalm, w: 1 }],
+      clutter: [{ p: P.beachBall, w: 1 }, { p: P.puddle, w: 3 }, { p: P.drainGrate, w: 1 }],
+    },
+    stray: (world, pos) => {
+      const model = duckModel(0.62);
+      const duck = new NPC(world, { name: 'a duck', pos, model, radius: 0, face: false, marker: false, prompt: 'Poke the duck', conversations: [['(A rubber duck, a very long way from any water. It looks betrayed.)'], ['(Squeak.)']], onTalk: (game) => game.audio.squeak() });
+      duck.aimHeight = 0.1;
+      duck.idle = () => (model.rotation.y = Math.sin(duck.t * 0.4) * 0.6);
+      return duck;
+    },
   },
 
   makeDoor(world, dest) {

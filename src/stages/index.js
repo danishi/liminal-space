@@ -5,7 +5,10 @@ import school from './school.js';
 import station from './station.js';
 import shrine from './shrine.js';
 import hotel from './hotel.js';
+import mall from './mall.js';
+import garage from './garage.js';
+import bathhouse from './bathhouse.js';
 
 // Levels are picked at random; each has a `tint` used for the light behind
 // doors that lead to it.
-export const STAGES = [backrooms, poolrooms, pastel, school, station, shrine, hotel];
+export const STAGES = [backrooms, poolrooms, pastel, school, station, shrine, hotel, mall, garage, bathhouse].filter(Boolean);

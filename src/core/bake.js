@@ -280,7 +280,7 @@ export function bakeWorld(world, extraSources = [], opts = {}) {
   for (const e of world.entities) if (e.object && (e.presence !== undefined || e.dest !== undefined)) e.object.traverse((o) => skip.add(o));
   world.root.traverse((o) => {
     if (skip.has(o)) return;
-    if (!o.isMesh || !o.visible) return;
+    if (!o.isMesh || !o.visible || o.isSkinnedMesh || o.userData.noBake) return;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     if (!mats.every((m) => m.isMeshStandardMaterial)) return;
     meshes.push(o);
@@ -310,5 +310,6 @@ export function bakeWorld(world, extraSources = [], opts = {}) {
     o.receiveShadow = true;
     o.castShadow = true;
   }
+  world.baker = baker;
   return uniforms;
 }

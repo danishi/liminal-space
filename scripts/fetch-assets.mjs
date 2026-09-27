@@ -26,6 +26,9 @@ export const TEXTURES = [
   'dirty_carpet', 'decrepit_wallpaper', 'long_white_tiles', 'linoleum_brown',
   'beige_wall_001', 'painted_concrete', 'concrete_floor_02', 'bamboo_wall', 'stone_pathway_02', 'clean_pebbles',
   'dark_paneled_wood', 'gravel', 'ceiling_interior', 'brown_planks_03',
+  // mall, garage, bathhouse
+  'terrazzo_tiles', 'painted_metal_shutter', 'garage_floor', 'concrete_wall_004', 'square_tiled_wall', 'blue_floor_tiles_01',
+  'old_wooden_floor_02',
 ];
 
 export const MODELS = [
@@ -43,6 +46,12 @@ export const MODELS = [
   // hotel
   'ArmChair_01', 'Sofa_01', 'CoffeeCart_01', 'Chandelier_02', 'ClassicNightstand_01', 'fancy_picture_frame_01',
   'ornate_mirror_01', 'vintage_grandfather_clock_01', 'antique_ceramic_vase_01',
+  // mall
+  'CashRegister_01', 'potted_plant_04', 'modular_street_seating', 'bar_chair_round_01', 'coffee_table_round_01', 'wooden_display_shelves_01',
+  // garage
+  'covered_car', 'concrete_road_barrier', 'old_tyre', 'hand_truck', 'metal_jerrycan', 'power_box_01',
+  // bathhouse
+  'wooden_stool_01', 'wooden_bucket_02', 'wicker_basket_01', 'ceiling_fan', 'painted_wooden_bench',
 ];
 
 export const HDRIS = { qwantani_night_puresky: '2k', stuttgart_suburbs: '1k' };

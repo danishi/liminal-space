@@ -3,8 +3,10 @@ import { RNG } from '../core/rng.js';
 import { wallMounts, WATER, HOLE, DIRS } from '../core/grid.js';
 import { DriftDoor } from '../entities/door.js';
 import { bakeWorld } from '../core/bake.js';
+import { applyBleed, updateBleed } from './bleed.js';
 
 const STEP_UP = 0.55;
+const _pp = new THREE.Vector3();
 
 /**
  * A built level: geometry, collision, residents, apparitions and the doors
@@ -15,7 +17,7 @@ const STEP_UP = 0.55;
  * break lights and let stranger things appear.
  */
 export class World {
-  constructor(game, stage, { seed = (Math.random() * 1e9) | 0, depth = 0, attract = false, lights = 6, stages = [] } = {}) {
+  constructor(game, stage, { seed = (Math.random() * 1e9) | 0, depth = 0, attract = false, lights = 6, stages = [], bleed = [] } = {}) {
     this.game = game;
     this.stage = stage;
     this.stages = stages;
@@ -62,9 +64,15 @@ export class World {
     // levels last a few minutes, a little shorter the deeper you drift
     this.duration = this.rng.float(170, 300) * Math.max(0.65, 1 - depth * 0.04);
     this.timeLeft = this.duration;
+    // other levels leaking into this one (see bleed.js)
+    this.bleedStages = bleed;
+    this.bleedZones = [];
+    this.bleedLevel = 0;
+    this.bleedZone = null;
 
     stage.build(this);
     if (!this.distFromSpawn) this.finalizeLayout();
+    if (bleed.length) applyBleed(this);
     if (!attract) this.placeDoors(stage.doorCount ?? 2);
     if (this.env.bake !== false) this.bake();
   }
@@ -80,6 +88,18 @@ export class World {
       this.lightPool.baseIntensity *= b.dynamic;
       for (const f of this.lightPool.fixtures) if (f.intensity !== undefined) f.intensity *= b.dynamic;
     }
+  }
+
+  /**
+   * Baked light arriving at a point (for moving things that can't be baked):
+   * writes irradiance into `out` (Vector3), zero when the level isn't baked.
+   */
+  probe(pos, out) {
+    if (!this.baker || !this.bakeUniforms) return out.set(0, 0, 0);
+    const [i, j] = this.grid.cellOf(pos.x, pos.z);
+    _pp.set(pos.x, pos.y + 1.1, pos.z);
+    this.baker.irradiance(_pp, null, i, j, out);
+    return out.multiplyScalar(this.bakeUniforms.scale.value * 0.8);
   }
 
   /** Call after carving the grid: seals pockets and computes distances. */
@@ -280,6 +300,11 @@ export class World {
   }
 
   update(dt, ctx) {
+    if (this.bleedZones.length) {
+      const b = updateBleed(this, dt, ctx.player.pos);
+      this.bleedLevel = b.level;
+      this.bleedZone = b.zone;
+    }
     for (const e of this.entities) e.update?.(dt, ctx);
     for (const a of this.animated) a(dt, ctx);
     this.onUpdate?.(dt, ctx);
@@ -290,7 +315,7 @@ export class World {
     for (const e of this.entities) e.dispose?.();
     for (const fn of this.onDispose) fn();
     this.root.traverse((o) => {
-      if (o.geometry) o.geometry.dispose();
+      if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {

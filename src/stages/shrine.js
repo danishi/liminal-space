@@ -7,8 +7,10 @@ import { LightPool } from '../core/lights.js';
 import { PropKit } from '../props/kit.js';
 import { photo, texMap, hdri } from '../core/assets.js';
 import * as P from '../props/library.js';
-import { Watcher, Follower } from '../entities/creatures.js';
-import { NPC, mat } from '../entities/npc.js';
+import { Watcher, Follower, Peeker } from '../entities/creatures.js';
+import { NPC } from '../entities/npc.js';
+import { LOOKS } from '../entities/looks.js';
+import { beastPose, tailSway } from '../entities/figures.js';
 
 const WALL_H = 2.3; // bamboo fence; the grove towers behind it
 
@@ -42,48 +44,9 @@ function carveMaze(g, rng) {
 }
 
 function kitsuneModel() {
-  const g = new THREE.Group();
-  const white = new THREE.MeshPhysicalMaterial({ color: 0xf4f0ea, roughness: 0.6, sheen: 1, sheenColor: 0xffffff, emissive: 0x2a2a3a, emissiveIntensity: 0.4 });
-  const red = mat(0xc4261c, { roughness: 0.5 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.25, 20, 14), white);
-  body.scale.set(0.8, 1, 1.4);
-  body.position.set(0, 0.42, 0);
-  g.add(body);
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), white);
-  chest.position.set(0, 0.62, 0.22);
-  g.add(chest);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 12), white);
-  head.position.set(0, 0.86, 0.3);
-  g.add(head);
-  const snout = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 12), white);
-  snout.rotation.x = Math.PI / 2;
-  snout.position.set(0, 0.82, 0.48);
-  g.add(snout);
-  for (const s of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 8), white);
-    ear.position.set(s * 0.08, 1.0, 0.28);
-    g.add(ear);
-    const mark = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.01, 0.01), red);
-    mark.position.set(s * 0.05, 0.9, 0.43);
-    mark.rotation.z = s * 0.4;
-    g.add(mark);
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.4, 8), white);
-    leg.position.set(s * 0.1, 0.2, 0.2);
-    g.add(leg);
-  }
-  const tail = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10), white);
-  tail.scale.set(0.8, 0.8, 2.4);
-  tail.position.set(0, 0.62, -0.42);
-  tail.rotation.x = -0.8;
-  g.add(tail);
-  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.03, 8, 20), red);
-  scarf.rotation.x = Math.PI / 2 - 0.3;
-  scarf.position.set(0, 0.72, 0.24);
-  g.add(scarf);
-  const aura = glow(0xcfd8ff, 1.8, 0.25);
-  aura.position.y = 0.6;
-  g.add(aura);
-  return g;
+  const fig = LOOKS.kitsune();
+  beastPose(fig, 'sit');
+  return fig;
 }
 
 export default {
@@ -96,6 +59,7 @@ export default {
     textures: ['bamboo_wall', 'stone_pathway_02', 'clean_pebbles', 'brown_planks_03'],
     models: ['wooden_lantern_01', 'rock_moss_set_01', 'fern_02', 'wooden_bucket_01'],
     hdris: ['qwantani_night_puresky'],
+    looks: ['kitsune', ['watcher', { body: 0x0a0a0a, eyes: 0xff5a30, height: 2.3 }]],
   },
 
   build(world) {
@@ -361,15 +325,54 @@ export default {
         ],
       });
       fox.aimHeight = 0.7;
-      fox.idle = () => {
-        model.children[model.children.length - 3].rotation.y = Math.sin(fox.t * 2) * 0.3;
+      fox.face = false;
+      // sits like a shrine statue; the tail and the head are the only things that move
+      fox.idle = (dt, ctx) => {
+        const rig = model.userData.rig;
+        beastPose(model, 'sit');
+        tailSway(rig, fox.t, 0.35, 1.1);
+        const p = ctx.player.pos;
+        const yaw = Math.atan2(p.x - model.position.x, p.z - model.position.z) - model.rotation.y;
+        const rel = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+        const near = p.distanceTo(model.position) < 8;
+        rig.rot('neck', 0.25, near ? Math.max(-0.6, Math.min(0.6, rel)) * 0.5 : 0, 0);
+        rig.rot('head', 0.55, near ? Math.max(-0.9, Math.min(0.9, rel)) * 0.6 : Math.sin(fox.t * 0.3) * 0.2, near ? 0 : Math.sin(fox.t * 0.5) * 0.1);
+        // turn the whole body slowly when you walk round behind it
+        if (near && Math.abs(rel) > 1.2) model.rotation.y += Math.sign(rel) * dt * 0.6;
       };
       world.add(fox);
     }
     if (!world.attract) {
       world.add(new Watcher(world, { look: { body: 0x0a0a0a, eyes: 0xff5a30, height: 2.3 }, speed: 1.3 }));
       if (world.depth >= 1) world.add(new Follower(world));
+      if (world.depth >= 1) world.add(new Peeker(world, { look: { body: 0x0a0a0a, eyes: 0xff5a30 } }));
     }
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'shrine',
+    looks: ['kitsune'],
+    surfaces: () => ({
+      wall: { mat: photo('bamboo_wall', { uvScale: 2, color: 0xb8a888 }), uv: 2 },
+      floor: { mat: photo('stone_pathway_02', { uvScale: 2.4, color: 0xc8c4bc }), uv: 2.4 },
+    }),
+    props: {
+      wall: [{ p: P.stoneLantern, w: 2 }, { p: P.jizo, w: 1 }, { p: P.emaRack, w: 0.6 }],
+      floor: [{ p: P.foxStatue, w: 1 }, { p: P.stoneLantern, w: 1 }],
+      clutter: [{ p: P.spiderLilies, w: 2 }],
+    },
+    stray: (world, pos) => {
+      const model = kitsuneModel();
+      model.position.copy(pos);
+      const fox = new NPC(world, { name: 'the white fox', pos, model, voice: 1.4, radius: 0.35, face: false, conversations: [
+        ['Hm. The gates brought me somewhere odd.'],
+        ['Don’t tell anyone you saw a fox here.', 'They’ll say the place is haunted, and then where will we be.'],
+      ] });
+      fox.aimHeight = 0.7;
+      fox.idle = () => tailSway(model.userData.rig, fox.t, 0.4, 1.4);
+      return fox;
+    },
   },
 
   makeDoor(world, dest) {

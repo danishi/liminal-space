@@ -5,6 +5,8 @@ import { Input } from '../core/input.js';
 import { setMaxAnisotropy } from '../core/textures.js';
 import { setSurfaceAnisotropy } from '../core/surfaces.js';
 import { preload, setAssetAnisotropy } from '../core/assets.js';
+import { prewarm } from '../entities/looks.js';
+import { pickBleed } from './bleed.js';
 import { Player } from './player.js';
 import { World } from './world.js';
 import { STAGES } from '../stages/index.js';
@@ -73,6 +75,7 @@ export class Game {
     this.lastFrame = performance.now();
     this.fpsAcc = { t: 0, n: 0 };
     this.warnedSignal = false;
+    this.history = [];
 
     this.input.onLockChange = (locked) => {
       if (this.state !== 'playing') return;
@@ -132,13 +135,13 @@ export class Game {
     return options[Math.floor(Math.random() * options.length)];
   }
 
-  buildWorld(index, { attract = false, seed = (Math.random() * 1e9) | 0 } = {}) {
+  buildWorld(index, { attract = false, seed = (Math.random() * 1e9) | 0, bleed = [] } = {}) {
     if (this.world) {
       this.world.dispose();
       this.world = null;
     }
     const stage = STAGES[index];
-    const world = new World(this, stage, { seed, depth: attract ? 0 : this.depth, attract, lights: this.quality.lights, stages: STAGES });
+    const world = new World(this, stage, { seed, depth: attract ? 0 : this.depth, attract, lights: this.quality.lights, stages: STAGES, bleed: bleed.map((i) => STAGES[i]) });
     this.scene.add(world.root);
     this.world = world;
     this.stageIndex = index;
@@ -202,6 +205,7 @@ export class Game {
     this.input.enabled = false;
     const index = this.randomStage();
     await preload(STAGES[index].assets);
+    await prewarm(STAGES[index].assets?.looks);
     this.buildWorld(index, { attract: true, seed: (Math.random() * 1e6) | 0 });
     this.ui.show('title');
     this.ui.hud(false);
@@ -211,7 +215,7 @@ export class Game {
   startAmbience() {
     if (!this.world) return;
     this.audio.setReverb(...this.world.env.reverb);
-    this.audio.setAmbience(this.world.env.ambience);
+    this.audio.setAmbience(this.world.env.ambience, this.world.bleedStages[0]?.bleed?.ambience);
   }
 
   /** Leaves the title and drops into a random level. */
@@ -219,13 +223,17 @@ export class Game {
     this.audio.init();
     this.depth = 0;
     this.totalTime = 0;
+    this.history = [];
     this.input.enabled = true;
     this.input.requestLock();
     await this.drift(this.randomStage(this.stageIndex), 'start');
   }
 
-  /** Moves to level `dest` (or a random one). how: 'door' | 'time' | 'fall' | 'start' | 'menu' */
-  async drift(dest = null, how = 'door') {
+  /**
+   * Moves to level `dest` (or a random one). how: 'door' | 'time' | 'fall' | 'start' | 'menu'.
+   * opts.bleed: level indices to bleed in (default: chosen from the levels you've passed through).
+   */
+  async drift(dest = null, how = 'door', opts = {}) {
     if (this.drifting) return;
     this.drifting = true;
     this.closeDialog();
@@ -234,8 +242,14 @@ export class Game {
     await this.ui.fadeOut(how === 'fall' || how === 'time');
     if (how !== 'start') this.depth++;
     const index = dest ?? this.randomStage(this.stageIndex);
-    await preload(STAGES[index].assets);
-    this.buildWorld(index);
+    // levels you've been through may leak into this one
+    const bleed = opts.bleed ?? (how === 'start' ? [] : pickBleed(this.history, index, this.depth));
+    for (const i of [index, ...bleed]) {
+      await preload(STAGES[i].assets);
+      await prewarm(i === index ? STAGES[i].assets?.looks : STAGES[i].bleed?.looks);
+    }
+    this.buildWorld(index, { bleed });
+    this.history.push(index);
     this.startAmbience();
     this.ui.show(null);
     this.ui.hud(true, this.world, this.depth);
@@ -338,7 +352,7 @@ export class Game {
       this.audio.update(dt);
       this.flash = Math.max(0, this.flash - dt * 1.5);
       this.staticPulse = Math.max(0, this.staticPulse - dt * 1.2);
-      this.post.update(this.time, this.fear, { static: Math.max(this.staticLevel, this.staticPulse), desat: this.desat || 0, flash: this.flash });
+      this.post.update(this.time, this.fear, { static: Math.max(this.staticLevel, this.staticPulse), desat: this.desat || 0, flash: this.flash, bleed: this.state === 'playing' ? this.world.bleedLevel : 0 });
       this.post.render(dt);
     }
 
@@ -420,7 +434,9 @@ export class Game {
     this.audio.setFear(this.fear);
     this.desat = Math.min(0.5, Math.max(0, unease - 0.6) * 0.5);
     const fade = w.timeLeft < 18 ? (1 - w.timeLeft / 18) : 0;
-    this.staticLevel = Math.max(0, this.fear - 0.8) * 0.4 + fade * fade * 0.55 + (Math.random() < unease * 0.004 ? 0.35 : 0);
+    const bl = w.bleedLevel;
+    this.staticLevel = Math.max(0, this.fear - 0.8) * 0.4 + fade * fade * 0.55 + (Math.random() < unease * 0.004 ? 0.35 : 0) + bl * 0.04 + (Math.random() < bl * 0.015 ? 0.3 : 0);
+    this.updateBleed(dt, bl);
 
     // on high quality the reflection probe follows you around
     if (this.quality.probeFollow && this.probePos && this.time - this.probeTime > 5 && this.camera.position.distanceTo(this.probePos) > 12) {
@@ -429,6 +445,24 @@ export class Game {
 
     this.ui.updateHud(this);
     this.ui.drawMaps(w, p);
+  }
+
+  /** Crossed signals: the other level's sound, a garbled HUD, and a note the first time. */
+  updateBleed(dt, level) {
+    const w = this.world;
+    if (!w.bleedZones.length) return;
+    this.audio.setBleed(level);
+    const z = w.bleedZone;
+    if (!z) return;
+    if (level > 0.5 && !z.noticed) {
+      z.noticed = true;
+      this.audio.glitch(1);
+      this.toast('Crossed signal', `${z.stage.code} ${z.stage.name} is leaking in here`, 'danger');
+    }
+    if (level > 0.2 && Math.random() < dt * level * 2.5) {
+      this.audio.glitch(0.4 * level);
+      this.ui.glitchStage(w.stage, z.stage, this.depth);
+    }
   }
 
   nearLight(pos, radius = 3.5) {

@@ -83,6 +83,48 @@
         1,
         1
       ]
+    },
+    "terrazzo_tiles": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "painted_metal_shutter": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "garage_floor": {
+      "size": [
+        1.8864402770996094,
+        1.8864402770996094
+      ]
+    },
+    "concrete_wall_004": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "square_tiled_wall": {
+      "size": [
+        2,
+        2
+      ]
+    },
+    "blue_floor_tiles_01": {
+      "size": [
+        2,
+        2.0000009536743164
+      ]
+    },
+    "old_wooden_floor_02": {
+      "size": [
+        2.0299999713897705,
+        2.0299999713897705
+      ]
     }
   },
   "models": [
@@ -120,7 +162,24 @@
     "fancy_picture_frame_01",
     "ornate_mirror_01",
     "vintage_grandfather_clock_01",
-    "antique_ceramic_vase_01"
+    "antique_ceramic_vase_01",
+    "CashRegister_01",
+    "potted_plant_04",
+    "modular_street_seating",
+    "bar_chair_round_01",
+    "coffee_table_round_01",
+    "wooden_display_shelves_01",
+    "covered_car",
+    "concrete_road_barrier",
+    "old_tyre",
+    "hand_truck",
+    "metal_jerrycan",
+    "power_box_01",
+    "wooden_stool_01",
+    "wooden_bucket_02",
+    "wicker_basket_01",
+    "ceiling_fan",
+    "painted_wooden_bench"
   ],
   "hdris": [
     "qwantani_night_puresky",
