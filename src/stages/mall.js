@@ -27,7 +27,7 @@ const SHOP_H = 3.4; // shop ceiling above its floor
 const PIT = -0.9; // fountain court floor
 const FOOD = -0.6; // food court seating
 const DOCK = -1.2; // loading dock
-const Z = { PUB: 0, SHOP: 1, SERV: 2, REST: 3 };
+const Z = { PUB: 0, SHOP: 1, SERV: 2, REST: 3, OFFICE: 4 };
 const ESC = [13, 37, 45]; // escalator pairs (first column)
 const MALL = 'Willow Creek Galleria';
 
@@ -103,8 +103,8 @@ function signTex(name, st, dead, ghost = false) {
 function skylightTex(grey, dirt, seed) {
   return canvasTex(256, 512, (ctx, w, h) => {
     const sky = ctx.createLinearGradient(0, 0, w, h);
-    const a = new THREE.Color(0.86, 0.93, 1).lerp(new THREE.Color(0.75, 0.76, 0.78), grey);
-    const b = new THREE.Color(1, 0.98, 0.93).lerp(new THREE.Color(0.82, 0.82, 0.82), grey);
+    const a = new THREE.Color(0.52, 0.7, 0.94).lerp(new THREE.Color(0.66, 0.67, 0.7), grey);
+    const b = new THREE.Color(0.86, 0.92, 1).lerp(new THREE.Color(0.8, 0.8, 0.8), grey);
     sky.addColorStop(0, `#${a.getHexString()}`);
     sky.addColorStop(1, `#${b.getHexString()}`);
     ctx.fillStyle = sky;
@@ -129,8 +129,8 @@ function skylightTex(grey, dirt, seed) {
     }
     ctx.filter = 'none';
     ctx.fillStyle = '#5b5e62';
-    for (let k = 0; k <= 4; k++) ctx.fillRect(k * (w / 4) - 4, 0, 8, h);
-    for (let k = 0; k <= 8; k++) ctx.fillRect(0, k * (h / 8) - 3, w, 6);
+    for (let k = 0; k <= 2; k++) ctx.fillRect(k * (w / 2) - 5, 0, 10, h);
+    for (let k = 0; k <= 5; k++) ctx.fillRect(0, k * (h / 5) - 4, w, 8);
   });
 }
 
@@ -254,7 +254,7 @@ function directoryTex(g, zones, stars, fool) {
         if (g.solid(i, j)) continue;
         const z = zones[j * g.w + i];
         const up = g.heightOf(i, j) > 2;
-        ctx.fillStyle = z === Z.SHOP ? (up ? '#7aa6d6' : '#e8905e') : z === Z.SERV ? '#bdb7ab' : z === Z.REST ? '#8cc6bc' : up ? '#d9c79c' : '#eadcbc';
+        ctx.fillStyle = z === Z.SHOP ? (up ? '#7aa6d6' : '#e8905e') : z === Z.SERV || z === Z.OFFICE ? '#bdb7ab' : z === Z.REST ? '#8cc6bc' : up ? '#d9c79c' : '#eadcbc';
         if (g.ramp[j * g.w + i]) ctx.fillStyle = '#b8a67a';
         ctx.fillRect(ox + i * s, oy + j * s, s + 0.5, s + 0.5);
       }
@@ -571,7 +571,7 @@ function planter(k, rng, o = {}) {
   for (let s = 0; s < n; s++) {
     const x = n === 1 ? 0 : (s - 0.5) * (w * 0.5);
     if (o.dead && rng.chance(0.6)) continue;
-    k.model(g, 'potted_plant_02', x, 0.2, 0, rng.float(0, PI * 2), rng.float(1.4, 1.8));
+    k.model(g, 'potted_plant_02', x, 0.02, 0, rng.float(0, PI * 2), rng.float(1.6, 1.9));
   }
   return g;
 }
@@ -599,7 +599,7 @@ function stall(k, rng, name, style, dead, menu, glass) {
   keep(k.plane(g, 2.6, 1.0, board, 0, 2.25, -0.86));
   const sign = new THREE.MeshStandardMaterial({ map: signTex(name, style, dead), emissive: 0xffffff, roughness: 0.4 });
   sign.emissiveMap = sign.map;
-  sign.emissiveIntensity = 0.9;
+  sign.emissiveIntensity = style.glow ? 0.9 : 0.35;
   k.box(g, 3.9, 0.7, 0.14, k.std(0x1c1a18, 0.4), 0, 3.4, -0.2);
   keep(k.plane(g, 3.8, 0.62, sign, 0, 3.4, -0.129));
   return g;
@@ -896,7 +896,7 @@ export default {
   sub: 'Muzak for no one',
   tint: 0xffe6c8,
   assets: {
-    textures: ['terrazzo_tiles', 'beige_wall_001', 'painted_metal_shutter', 'old_wooden_floor_02', 'concrete_floor_02', 'painted_concrete', 'ceiling_interior', 'square_tiled_wall', 'blue_floor_tiles_01'],
+    textures: ['terrazzo_tiles', 'beige_wall_001', 'painted_metal_shutter', 'old_wooden_floor_02', 'concrete_floor_02', 'concrete_wall_004', 'linoleum_brown', 'ceiling_interior', 'square_tiled_wall', 'blue_floor_tiles_01'],
     models: [
       'CashRegister_01', 'potted_plant_04', 'modular_street_seating', 'bar_chair_round_01', 'coffee_table_round_01', 'wooden_display_shelves_01',
       'metal_trash_can', 'WetFloorSign_01', 'potted_plant_02', 'security_camera_01', 'cardboard_box_01', 'hand_truck', 'trashbag',
@@ -970,9 +970,9 @@ export default {
     area(33, 28, 33, 28, Z.SERV, 2.9);
     g.setRamp(33, 28, 3, DOCK, -DOCK);
     // upstairs: a corridor to the management office and nowhere in particular
-    area(30, 4, 30, 9, Z.SERV, UP + 2.8, UP);
-    area(18, 3, 46, 3, Z.SERV, UP + 2.8, UP);
-    area(34, 1, 38, 2, Z.SERV, UP + 2.8, UP);
+    area(30, 4, 30, 9, Z.OFFICE, UP + 2.8, UP);
+    area(18, 3, 46, 3, Z.OFFICE, UP + 2.8, UP);
+    area(34, 1, 38, 2, Z.OFFICE, UP + 2.8, UP);
 
     const sp = g.center(3, 15);
     world.spawn = { x: sp.x, z: sp.z, yaw: -PI / 2 };
@@ -1013,10 +1013,16 @@ export default {
         base: { mat: pbr(paint('s-mall-shopbase', [60, 52, 46], { rough: 0.4 })), h: 0.1 },
       },
       [Z.SERV]: {
-        wall: { mat: photo('painted_concrete', { uvScale: 2, color: new THREE.Color(1.05, 1.1, 1.0) }), u: 2, v: 2 },
+        wall: { mat: photo('concrete_wall_004', { uvScale: 2, color: new THREE.Color(1.25, 1.24, 1.18) }), u: 2, v: 2 },
         floor: { mat: photo('concrete_floor_02', { uvScale: 2, color: 0xb8b4aa }), uv: 2 },
-        ceil: { mat: photo('ceiling_interior', { uvScale: 2.4, color: 0xc8c2b6 }), uv: 2.4 },
-        base: { mat: pbr(paint('s-mall-servbase', [60, 88, 70], { rough: 0.5 })), h: 0.15 },
+        ceil: { mat: pbr(paint('s-mall-servceil', [170, 170, 164], { rough: 0.9 })), uv: 2 },
+        base: { mat: pbr(paint('s-mall-servbase', [64, 70, 66], { rough: 0.5 })), h: 0.15 },
+      },
+      [Z.OFFICE]: {
+        wall: { mat: pbr(paint('s-mall-office', [214, 206, 188], { rough: 0.75 })), u: 2, v: 2 },
+        floor: { mat: photo('linoleum_brown', { uvScale: 2, color: 0xd8ccb8 }), uv: 2 },
+        ceil: { mat: photo('ceiling_interior', { uvScale: 2.4, color: 0xf0ece0 }), uv: 2.4 },
+        base: { mat: pbr(paint('s-mall-officebase', [70, 58, 48], { rough: 0.4 })), h: 0.1 },
       },
       [Z.REST]: {
         wall: { mat: photo('square_tiled_wall', { uvScale: 2, roughness: 0.4, color: new THREE.Color(1.15, 1.12, 1.02) }), u: 2, v: 2 },
@@ -1110,7 +1116,7 @@ export default {
       for (let n = 0; n < nDead; n++) dead.add(rng.int(0, name.length - 1));
       const off = u > 1.0 && rng.chance(0.35);
       const tex = signTex(name, st, dead);
-      const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: off ? 0.04 : st.glow ? 1.1 : 0.75, roughness: 0.4 });
+      const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: off ? 0.04 : st.glow ? 1.1 : 0.32, roughness: 0.4 });
       return { mat: m, style: st, dead };
     };
     const ghostSign = (name) => ({ ghost: true, mat: new THREE.MeshStandardMaterial({ map: signTex(name, STYLES[0], new Set(), true), transparent: true, depthWrite: false, roughness: 0.9 }) });
@@ -1201,7 +1207,7 @@ export default {
       // welcome sign over the way in
       const wm = new THREE.MeshStandardMaterial({ map: signTex(MALL, STYLES[1], new Set()), emissive: 0xffffff, roughness: 0.4 });
       wm.emissiveMap = wm.map;
-      wm.emissiveIntensity = 0.7;
+      wm.emissiveIntensity = 0.35;
       const ws = G();
       kit.box(ws, 6.6, 1.0, 0.12, kit.std(0x2a2826, 0.4), 0, 0, 0);
       keep(kit.plane(ws, 6.4, 0.9, wm, 0, 0, 0.061));
@@ -1312,7 +1318,7 @@ export default {
     const beamMat = kit.std(0xf0ece2, 0.6);
     const skyGrey = Math.min(0.8, depth * 0.15);
     const skyTex = [0, 1, 2].map((d) => skylightTex(skyGrey, d * 0.5, d + 3));
-    const skyMats = skyTex.map((t) => new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1, 1, 1).multiplyScalar(2.1 - skyGrey * 0.8) }));
+    const skyMats = skyTex.map((t) => new THREE.MeshBasicMaterial({ map: t, color: new THREE.Color(1, 1, 1).multiplyScalar(1.2 - skyGrey * 0.35) }));
     const daylight = new THREE.Color(1, 0.96, 0.88).lerp(new THREE.Color(0.85, 0.87, 0.9), skyGrey);
     const skylights = [];
     const skylight = (x0, x1, z0, z1) => {
@@ -1521,6 +1527,12 @@ export default {
       kit.add(b, x * CS, z * CS + 0.3, x < 24 ? PI / 2 : -PI / 2, { collide: [sz.x, sz.z] });
     }
     for (let a = 21; a <= 27; a++) for (let b = 15; b <= 23; b++) claimed.add(`${a},${b}`);
+    // low tables by the fountain for the tired
+    for (const x of [21.6, 27.4]) {
+      const t = G();
+      kit.model(t, 'coffee_table_round_01', 0, 0, 0, 0, 0.8);
+      kit.add(t, x * CS, 22.6 * CS, rng.float(0, 6), { collide: { r: 0.5 } });
+    }
 
     // food court: stalls along the walls, tables in the pit
     const stallDefs = rng.shuffle([
@@ -1562,14 +1574,18 @@ export default {
       const z = (21.5 + Math.floor(n / 3) * 1.6) * CS;
       const u = world.uneaseAt(x, z);
       const tg = G();
-      kit.model(tg, 'coffee_table_round_01', 0, 0, 0, 0, 1);
+      // laminate pedestal table with scanned stools
+      kit.cyl(tg, 0.45, 0.45, 0.04, kit.std(0xf0ece2, 0.35), 0, 0.74, 0, 0, 0, 0, 24);
+      kit.cyl(tg, 0.46, 0.46, 0.02, kit.std(0x8a6a3a, 0.4, 0.6), 0, 0.72, 0, 0, 0, 0, 24);
+      kit.cyl(tg, 0.04, 0.04, 0.72, steel, 0, 0.36, 0, 0, 0, 0, 10);
+      kit.cyl(tg, 0.28, 0.3, 0.03, steel, 0, 0.015, 0, 0, 0, 0, 20);
       const chairs = u > 0.8 ? rng.int(0, 1) : 2;
       for (let c = 0; c < chairs; c++) {
         const a = (c / Math.max(1, chairs)) * PI * 2 + rng.float(-0.3, 0.3);
         const r = u > 0.9 && rng.chance(0.5) ? rng.float(1.2, 2.2) : 0.95;
-        kit.model(tg, 'bar_chair_round_01', Math.cos(a) * r, 0, Math.sin(a) * r, -a + PI / 2, 1);
+        kit.model(tg, 'bar_chair_round_01', Math.cos(a) * r, 0, Math.sin(a) * r, -a + PI / 2, 0.62);
       }
-      kit.add(tg, x, z, rng.float(0, 6), { y: FOOD, collide: { r: 0.55 } });
+      kit.add(tg, x, z, rng.float(0, 6), { y: FOOD, collide: { r: 0.45 } });
     }
     for (let a = 42; a <= 50; a++) for (let b = 20; b <= 24; b++) claimed.add(`${a},${b}`);
     // staff door out of the food court
@@ -1674,6 +1690,18 @@ export default {
       ceil: [{ p: P.missingTile, w: 2 }, { p: P.hangingWires, w: 1, min: 0.4 }],
     });
     decorate(world, kit, {
+      density: { wall: 0.16, high: 0.14, floor: 0.04, clutter: 0.05, ceil: 0.05 },
+      keepClear: keepFor(Z.OFFICE),
+      wall: [
+        { p: P.fakeDoor, w: 2.5 }, { p: P.filingCabinet, w: 1.5 }, { p: P.waterCooler, w: 1 }, { p: M.plant, w: 1 }, { p: P.cardboardBoxes, w: 1 },
+        { p: P.tvStatic, w: 0.6, min: 0.8 }, { p: P.chairPile, w: 0.5, min: 0.9 },
+      ],
+      high: [{ p: P.bulletinBoard, w: 1 }, { p: P.wallClock, w: 1 }, { p: P.painting, w: 1 }, { p: P.painting, w: 1, min: 0.7, o: { eerie: true } }, { p: P.handprints, w: 1, min: 0.8 }],
+      floor: [{ p: P.officeChair, w: 2 }, { p: M.sign, w: 0.5 }],
+      clutter: [{ p: P.paperScatter, w: 2 }, { p: P.crtMonitor, w: 0.5, min: 0.5 }],
+      ceil: [{ p: P.missingTile, w: 2, min: 0.4 }, { p: P.hangingWires, w: 1, min: 0.7 }],
+    });
+    decorate(world, kit, {
       density: { wall: 0.3, high: 0.2, floor: 0, clutter: 0.06, ceil: 0 },
       keepClear: keepFor(Z.REST),
       wall: [{ p: P.waterFountain, w: 1 }, { p: M.trash, w: 1 }],
@@ -1689,7 +1717,7 @@ export default {
       if (g.ramp[K(i, j)] || escSet.has(K(i, j))) return false;
       const z = zoneOf(i, j);
       if (z === Z.SHOP) return i % 2 === 1 && j % 2 === 1;
-      if (z === Z.SERV || z === Z.REST) return (i + j) % 3 === 0;
+      if (z === Z.SERV || z === Z.REST || z === Z.OFFICE) return (i + j) % 3 === 0;
       if (i <= 3) return i === 2 && j === 15;
       if (j === 10 || j === 11) return j === 10 && i % 4 === 3;
       if (j >= 19) return i % 3 === 1 && j % 2 === 0;
@@ -1719,9 +1747,9 @@ export default {
     // ---- environment ----------------------------------------------------------------------------
     Object.assign(world.env, {
       background: 0xd8d0c4,
-      fog: new THREE.FogExp2(new THREE.Color(0xe6d8c4).lerp(new THREE.Color(0x8a8680), Math.min(1, depth * 0.15)), 0.012 + depth * 0.003),
-      exposure: 1.1,
-      postfx: { bloom: 0.4, bloomThreshold: 0.85, bloomRadius: 0.6, grain: 0.05, vignette: 0.32, chroma: 0.0014, scan: 0.025, tint: [1.03, 1.0, 0.95] },
+      fog: new THREE.FogExp2(new THREE.Color(0xd8ccb8).lerp(new THREE.Color(0x8a8680), Math.min(1, depth * 0.15)), 0.0055 + depth * 0.003),
+      exposure: 1.05,
+      postfx: { bloom: 0.35, bloomThreshold: 0.9, bloomRadius: 0.6, grain: 0.05, vignette: 0.32, chroma: 0.0014, scan: 0.025, tint: [1.03, 1.0, 0.95] },
       ao: 1,
       envIntensity: 0.7,
       ambience: 'mall',
@@ -1734,7 +1762,7 @@ export default {
       if (!g.inBounds(i, j)) return 'tile';
       if (escSet.has(K(i, j))) return 'stone';
       const zn = zoneOf(i, j);
-      return zn === Z.SHOP ? 'wood' : zn === Z.SERV ? 'stone' : 'tile';
+      return zn === Z.SHOP ? 'wood' : zn === Z.SERV ? 'stone' : zn === Z.OFFICE ? 'soft' : 'tile';
     };
 
     // ---- residents ----------------------------------------------------------------------------------
@@ -1765,10 +1793,11 @@ export default {
       const br = Math.sin(guard.t * 1.1);
       rig.rot('spine', -0.12, 0, 0);
       rig.rot('chest', -0.05 + br * 0.03, 0, 0);
-      rig.rot('armL', -0.35, 0, 0.25);
-      rig.rot('foreL', -1.3, 0.9, 0);
-      rig.rot('armR', -0.35, 0, -0.25);
-      rig.rot('foreR', -1.3, -0.9, 0);
+      // hands folded on the belly
+      rig.rot('armL', -0.25, 0, 0.12);
+      rig.rot('foreL', -1.35, -0.55, 0);
+      rig.rot('armR', -0.25, 0, -0.12);
+      rig.rot('foreR', -1.35, 0.55, 0);
       rig.rot('thighL', -1.35, 0, 0.18);
       rig.rot('thighR', -1.35, 0, -0.18);
       wake += ((guard.talking ? 1 : 0) - wake) * Math.min(1, dt * 2.5);

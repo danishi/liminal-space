@@ -1103,7 +1103,7 @@ export default {
     g.set(26, 17, FLOOR);
     g.fillRect(25, 18, 28, 20, FLOOR);
 
-    const sp = { x: 45.6 * CS, z: 4 * CS };
+    const sp = { x: 46.3 * CS, z: 3.7 * CS };
     world.spawn = { x: sp.x, z: sp.z, yaw: PI / 2 };
     world.finalizeLayout();
 
@@ -1238,13 +1238,13 @@ export default {
         const zc = (L + 1) * CS;
         const x0 = 1 * CS + 0.2;
         const len = 42 * CS - 0.4;
-        kit.mesh(decals, pipeGeo(0.055, len), M.red, x0 + len / 2, y + H - 0.62, zc - 1.2);
-        kit.mesh(decals, pipeGeo(0.08, len), M.grey, x0 + len / 2, y + H - 0.66, zc + 1.5);
-        kit.mesh(decals, pipeGeo(0.03, len), M.yellow, x0 + len / 2, y + H - 0.58, zc + 1.8);
+        // (they run through the downstand beams, as they do)
+        kit.mesh(decals, pipeGeo(0.055, len), M.red, x0 + len / 2, y + H - 0.2, zc - 1.9);
+        kit.mesh(decals, pipeGeo(0.08, len), M.grey, x0 + len / 2, y + H - 0.24, zc + 2.1);
+        kit.mesh(decals, pipeGeo(0.03, len), M.yellow, x0 + len / 2, y + H - 0.12, zc + 2.35);
         for (let x = x0 + 1; x < x0 + len; x += 3) {
-          kit.cyl(decals, 0.01, 0.01, 0.6, M.steel, x, y + H - 0.32, zc - 1.2, 0, 0, 0, 5);
-          kit.cyl(decals, 0.014, 0.02, 0.07, M.red, x + 1.5, y + H - 0.7, zc - 1.2, 0, 0, 0, 6);
-          kit.cyl(decals, 0.01, 0.01, 0.6, M.steel, x, y + H - 0.34, zc + 1.5, 0, 0, 0, 5);
+          kit.cyl(decals, 0.01, 0.01, 0.16, M.steel, x, y + H - 0.08, zc - 1.9, 0, 0, 0, 5);
+          kit.cyl(decals, 0.014, 0.02, 0.07, M.red, x + 1.5, y + H - 0.28, zc - 1.9, 0, 0, 0, 6);
         }
       }
       // a big ventilation duct over each back-to-back double row
@@ -1553,8 +1553,8 @@ export default {
     kit.add(island, 44.45 * CS, 5.5 * CS, 0, { collide: [7.4, 2.4] });
     // the booth: white panels below, glass above, a lamp and a little TV inside
     const booth = new THREE.Group();
-    const white = kit.std(0xd8d6ce, 0.45, 0.2);
-    const glass = kit.mat('glass', () => new THREE.MeshStandardMaterial({ color: 0x8aa0a8, roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.16, depthWrite: false }));
+    const white = kit.std(0x9c9a92, 0.5, 0.2);
+    const glass = kit.mat('glass', () => new THREE.MeshStandardMaterial({ color: 0x6a8088, roughness: 0.04, metalness: 0.4, transparent: true, opacity: 0.22, depthWrite: false }));
     const frame = kit.std(0x3a3c3e, 0.4, 0.6);
     const BW = 1.9;
     for (const [x, z, ry] of [[0, -BW / 2, 0], [0, BW / 2, 0], [-BW / 2, 0, PI / 2], [BW / 2, 0, PI / 2]]) {
@@ -1566,7 +1566,16 @@ export default {
     kit.box(booth, BW + 0.3, 0.14, BW + 0.3, white, 0, 2.37, 0);
     kit.box(booth, BW + 0.32, 0.05, BW + 0.32, frame, 0, 2.3, 0);
     kit.box(booth, BW - 0.1, 0.05, 0.4, kit.std(0x6a5a44, 0.6), 0, 0.95, -0.72);
-    kit.plane(booth, 1.1, 0.26, kit.tex('g-paysign', signTexture('ATTENDANT', 'Pay here · 24 h', { bg: '#1f5a8a', fg: '#fff', w: 512, h: 128 }), { emissive: 0xffffff, emissiveIntensity: 0.6 }), 0, 2.37, -BW / 2 - 0.161);
+    // lightbox on the roof
+    const payTex = signTexture('ATTENDANT', 'Pay here · 24 h', { bg: '#1f4a78', fg: '#fff', w: 512, h: 128 });
+    const payMat = kit.mat('paysign', () => new THREE.MeshStandardMaterial({ map: payTex, emissiveMap: payTex, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.4 }));
+    kit.box(booth, 1.3, 0.3, 0.1, frame, 0, 1.98, -BW / 2 - 0.07);
+    keep(kit.plane(booth, 1.24, 0.26, payMat, 0, 1.98, -BW / 2 - 0.121)).userData.noBake = true;
+    // window frames, a sliding pay hatch and a rubber mat
+    for (const y of [0.97, 2.15]) kit.box(booth, BW + 0.02, 0.05, BW + 0.02, frame, 0, y, 0);
+    kit.box(booth, 0.03, 1.2, 0.07, frame, 0, 1.55, -BW / 2);
+    kit.box(booth, 0.5, 0.04, 0.3, frame, 0.3, 0.98, -BW / 2 - 0.1);
+    kit.box(booth, BW - 0.06, 0.02, 0.4, kit.std(0x1a1a1a, 0.9), 0, 0.02, -BW / 2 - 0.3);
     const lampShade = kit.cyl(booth, 0.05, 0.1, 0.1, kit.glow(0xffc070, 2.2), 0.55, 1.2, -0.7);
     keep(lampShade);
     const tv = kit.plane(booth, 0.26, 0.2, new THREE.MeshBasicMaterial({ map: screenStatic(3), color: new THREE.Color(0.9, 1.1, 1.0) }), -0.55, 1.13, -0.62, -0.2, PI, 0);
@@ -1764,7 +1773,7 @@ export default {
     world.lightPool = pool;
     const lens = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.05, 0.22), new THREE.MeshBasicMaterial({ color: 0xffffff }), lampAt.length);
     const housing = new THREE.InstancedMesh(new THREE.BoxGeometry(0.62, 0.14, 0.3), new THREE.MeshStandardMaterial({ color: 0x3a3a38, roughness: 0.5, metalness: 0.5 }), lampAt.length);
-    pool.baseColor.setRGB(3.0, 1.55, 0.45);
+    pool.baseColor.setRGB(2.2, 0.95, 0.22);
     const mtx = new THREE.Matrix4();
     const col = new THREE.Color();
     lampAt.forEach(([x, z], n) => {
@@ -1774,7 +1783,7 @@ export default {
       const rot = crossOf(i) !== undefined && laneOf(j) === undefined ? PI / 2 : 0;
       mtx.makeRotationY(rot).setPosition(x, y, z);
       lens.setMatrixAt(n, mtx);
-      lens.setColorAt(n, col.setRGB(3.0, 1.55, 0.45));
+      lens.setColorAt(n, col.setRGB(2.2, 0.95, 0.22));
       mtx.makeRotationY(rot).setPosition(x, y + 0.09, z);
       housing.setMatrixAt(n, mtx);
       for (const s of [-0.22, 0.22]) kit.cyl(decals, 0.008, 0.008, 0.44, M.steel, x + (rot ? 0 : s), y + 0.38, z + (rot ? s : 0), 0, 0, 0, 5);
@@ -1939,7 +1948,7 @@ export default {
     Object.assign(world.env, {
       background: 0x070504,
       fog: new THREE.FogExp2(0x1c1208, 0.042 + world.depth * 0.004),
-      exposure: 1.25,
+      exposure: 1.15,
       postfx: { bloom: 0.5, bloomThreshold: 0.72, bloomRadius: 0.55, grain: 0.09, vignette: 0.48, chroma: 0.002, scan: 0.03, tint: [1.05, 0.98, 0.9] },
       ao: 1,
       envIntensity: 0.4,
@@ -1948,7 +1957,7 @@ export default {
       bake: { hemi: 0.8, dynamic: 0.5, bounce: 0.3, radius: 10 },
       flashlight: true,
       flashlightOn: true,
-      flashlightIntensity: 45,
+      flashlightIntensity: 24,
       flashlightDistance: 24,
     });
     world.surfaceFn = (x, z) => {

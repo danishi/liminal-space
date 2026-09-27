@@ -928,6 +928,38 @@ function plasticStoolParts() {
   return stoolParts;
 }
 
+/** Merges a prop group into one mesh per material (for props that move as a whole). */
+function mergeGroup(group, skip = new Set()) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const byMat = new Map();
+  const keepers = [];
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    if (skip.has(o)) {
+      keepers.push(o);
+      return;
+    }
+    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+    geo.applyMatrix4(_m.multiplyMatrices(inv, o.matrixWorld));
+    if (!byMat.has(o.material)) byMat.set(o.material, []);
+    byMat.get(o.material).push(geo);
+  });
+  const out = new THREE.Group();
+  for (const [mat, geos] of byMat) {
+    out.add(new THREE.Mesh(mergeGeometries(geos), mat));
+    for (const x of geos) x.dispose();
+  }
+  for (const o of keepers) {
+    const wm = _m.multiplyMatrices(inv, o.matrixWorld);
+    o.parent.remove(o);
+    wm.decompose(o.position, o.quaternion, o.scale);
+    out.add(o);
+  }
+  return out;
+}
+
 function matAt(x, y, z, yaw = 0, s = 1, rx = 0) {
   _q.setFromEuler(new THREE.Euler(rx, yaw, 0, 'YXZ'));
   return new THREE.Matrix4().compose(_v.set(x, y, z), _q, _s.set(s, s, s));
@@ -1101,7 +1133,7 @@ function milkFridge(k) {
   k.box(g, 0.56, 1.02, 0.02, interior, 0, 0.83, -0.2);
   // header sign
   const head = boardTexture('fridge-head', 512, 128, '#d82020', [['牛乳 MILK', 0.7, '#ffffff', 900]]);
-  keep(k.plane(g, 0.62, 0.16, k.mat('fridgeHead', () => new THREE.MeshStandardMaterial({ map: head, emissive: 0xffffff, emissiveMap: head, emissiveIntensity: 0.9 })), 0, 1.4, 0.28));
+  k.plane(g, 0.62, 0.16, k.mat('fridgeHead', () => new THREE.MeshStandardMaterial({ map: head, emissive: 0xffffff, emissiveMap: head, emissiveIntensity: 0.9 })), 0, 1.4, 0.28);
   // shelves and bottles
   const shelf = k.std(0xc8ccd0, 0.3, 0.8);
   const kinds = [[0xf8f6ee, 0], [0xb88a5a, 1], [0xf2c878, 2]];
@@ -1128,7 +1160,7 @@ function milkFridge(k) {
   }
   // glass door
   const glassDoor = k.mat('fridgeGlass', () => new THREE.MeshStandardMaterial({ color: 0xdff4ff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.18, depthWrite: false }));
-  keep(k.plane(g, 0.58, 1.08, glassDoor, 0, 0.84, 0.276));
+  k.plane(g, 0.58, 1.08, glassDoor, 0, 0.84, 0.276);
   k.box(g, 0.03, 1.1, 0.03, body, 0.28, 0.84, 0.27);
   k.box(g, 0.02, 0.4, 0.04, k.std(0x999999, 0.3, 0.9), -0.25, 0.9, 0.3);
   return g;
@@ -1192,7 +1224,7 @@ function crtTv(k, seed) {
   const g = new THREE.Group();
   k.box(g, 0.5, 0.4, 0.42, k.std(0x2a2826, 0.5), 0, 0.2, -0.04);
   const scr = screenStatic(seed);
-  keep(k.plane(g, 0.38, 0.29, k.mat(`tv:${seed}`, () => new THREE.MeshBasicMaterial({ map: scr, color: 0x9aa8b0 })), -0.04, 0.21, 0.172));
+  k.plane(g, 0.38, 0.29, k.mat(`tv:${seed}`, () => new THREE.MeshBasicMaterial({ map: scr, color: 0x9aa8b0 })), -0.04, 0.21, 0.172);
   k.box(g, 0.3, 0.03, 0.4, k.std(0x444444, 0.5, 0.6), 0, -0.015, -0.04);
   return g;
 }
@@ -1205,7 +1237,7 @@ function utilityPole(k) {
   for (const y of [6.8, 7.6]) k.box(g, 1.3, 0.1, 0.1, k.std(0x5a5a58, 0.6, 0.5), 0, y, 0);
   k.cyl(g, 0.03, 0.03, 1.1, k.std(0x6a6a68, 0.5, 0.6), 0, 4.6, 0.5, PI / 2 - 0.2);
   k.box(g, 0.2, 0.06, 0.34, k.std(0x3a3a3a, 0.5), 0, 4.7, 1.02);
-  keep(k.box(g, 0.16, 0.02, 0.28, k.glow(0xffd8a0, 3), 0, 4.66, 1.02));
+  k.box(g, 0.16, 0.02, 0.28, k.glow(0xffd8a0, 3), 0, 4.66, 1.02);
   const sign = boardTexture('pole-sign', 128, 512, '#1a3a8a', [['富', 0.2, '#fff'], ['士', 0.2, '#fff'], ['見', 0.2, '#fff'], ['町', 0.2, '#fff']]);
   k.plane(g, 0.18, 0.72, k.mat('poleSign', () => new THREE.MeshStandardMaterial({ map: sign, roughness: 0.6 })), 0, 2.4, 0.16);
   return g;
@@ -1849,8 +1881,8 @@ export default {
         ]);
         for (const [x, z] of [[-1.1, 0.03], [-0.95, -0.03], [0.95, -0.03], [1.1, 0.03]]) {
           kit.mesh(grp, frameGeo.clone(), frame, x, 0, z);
-          keep(kit.plane(grp, 0.6, 1.5, glass, x, 1.3, z + 0.004));
-          keep(kit.plane(grp, 0.6, 1.5, glass, x, 1.3, z - 0.004, 0, PI, 0));
+          kit.plane(grp, 0.6, 1.5, glass, x, 1.3, z + 0.004);
+          kit.plane(grp, 0.6, 1.5, glass, x, 1.3, z - 0.004, 0, PI, 0);
         }
         frameGeo.dispose();
         const p = at(m, 0, 8.5, 0.5, 0);
@@ -1960,21 +1992,21 @@ export default {
           fridges.push(poke.add({ pos: new THREE.Vector3(p.x + Math.sin(p.yaw) * 0.3, Y_WOOD + 1.0, p.z + Math.cos(p.yaw) * 0.3), prompt: 'Take a milk', kind: 'fridge', m }));
         }
         {
-          const ch = massageChair(kit);
+          const ch = mergeGroup(massageChair(kit));
           const p = at(m, s, 7.45, 8.0, -PI / 2);
           ch.position.set(p.x, Y_WOOD, p.z);
           ch.rotation.y = p.yaw;
-          ch.traverse((o) => o.isMesh && keep(o));
           world.root.add(ch);
           world.addFootprint(p.x, p.z, 0.8, 0.9, p.yaw);
           massageChairs.push(poke.add({ pos: new THREE.Vector3(p.x, Y_WOOD + 0.7, p.z), prompt: 'Sit in the massage chair', kind: 'chair', obj: ch, base: ch.position.clone(), m, shake: 0 }));
         }
         {
-          const sc = bathScale(kit);
+          const raw = bathScale(kit);
+          const sc = mergeGroup(raw, new Set([raw.userData.needle]));
+          sc.userData.needle = raw.userData.needle;
           const p = at(m, s, 7.6, 9.8, -PI / 2);
           sc.position.set(p.x, Y_WOOD, p.z);
           sc.rotation.y = p.yaw;
-          sc.traverse((o) => o.isMesh && keep(o));
           world.root.add(sc);
           world.addFootprint(p.x, p.z, 0.45, 0.55, p.yaw);
           scales.push(poke.add({ pos: new THREE.Vector3(p.x, Y_WOOD + 0.9, p.z), prompt: 'Step on the scale', kind: 'scale', needle: sc.userData.needle, m, spin: 0 }));
@@ -2087,8 +2119,7 @@ export default {
           const brass = kit.std(0xc8a050, 0.3, 0.9);
           kit.cyl(spout, 0.035, 0.035, 0.35, brass, 0, 1.0, 0.17, PI / 2);
           kit.cyl(spout, 0.05, 0.04, 0.1, brass, 0, 0.98, 0.35, 0.3);
-          const stream = keep(kit.cyl(spout, 0.018, 0.028, 1.0 - (Y_SURF + 0.02), kit.mat('stream', () => new THREE.MeshStandardMaterial({ color: 0xeaf6f6, transparent: true, opacity: 0.45, roughness: 0.05, emissive: 0x9ab8b8, emissiveIntensity: 0.4, depthWrite: false })), 0, (1.0 + Y_SURF) / 2 - 0.02, 0.38));
-          stream.userData.noBake = true;
+          kit.cyl(spout, 0.018, 0.028, 1.0 - (Y_SURF + 0.02), kit.mat('stream', () => new THREE.MeshStandardMaterial({ color: 0xeaf6f6, transparent: true, opacity: 0.45, roughness: 0.05, emissive: 0x9ab8b8, emissiveIntensity: 0.4, depthWrite: false })), 0, (1.0 + Y_SURF) / 2 - 0.02, 0.38, 0, 0, 0, 8);
           const q = at(m, s, lx + 0.3, 26.0, PI);
           kit.add(spout, q.x, q.z, q.yaw, { y: 0 });
         }
@@ -2149,8 +2180,8 @@ export default {
         const box = new THREE.Group();
         kit.box(box, 0.5, 0.5, 0.16, kit.std(0x333333, 0.5, 0.5), 0, 0, 0);
         const face = kit.mat('yuFace', () => new THREE.MeshStandardMaterial({ map: yuTex, emissive: 0xffffff, emissiveMap: yuTex, emissiveIntensity: 1.3 }));
-        keep(kit.plane(box, 0.46, 0.46, face, 0, 0, 0.081));
-        keep(kit.plane(box, 0.46, 0.46, face, 0, 0, -0.081, 0, PI, 0));
+        kit.plane(box, 0.46, 0.46, face, 0, 0, 0.081);
+        kit.plane(box, 0.46, 0.46, face, 0, 0, -0.081, 0, PI, 0);
         box.position.set(-2.1, 2.7, 0.5);
         box.rotation.y = PI / 2;
         kit.box(grp, 0.04, 0.04, 0.5, kit.std(0x333333, 0.5, 0.6), -2.1, 2.98, 0.25);
@@ -2201,7 +2232,7 @@ export default {
         const p = at(m, 0, d.li === 0 ? -0.1 : 17.1, d.lj + 0.5, d.li === 0 ? -PI / 2 : PI / 2);
         fixture(p.x, 2.45, p.z, { intensity: 0.45, color: 0xffb870, visible: false });
         const bulb = new THREE.Group();
-        keep(kit.sphere(bulb, 0.06, kit.glow(0xffd090, 4), 0, 0, 0));
+        kit.sphere(bulb, 0.06, kit.glow(0xffd090, 4), 0, 0, 0);
         kit.box(bulb, 0.08, 0.08, 0.2, kit.std(0x2a2a2a, 0.5), 0, 0.06, -0.08);
         kit.add(bulb, p.x, p.z, p.yaw, { y: 2.45 });
       }
