@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "リミナルスペース探索ゲーム (three.js)",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
