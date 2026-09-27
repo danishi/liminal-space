@@ -48,7 +48,9 @@ a light probe.
 - **A robot vacuum** has been cleaning the same room since 1998. Far enough out, it follows you.
 - Residents: the Drifter (asleep in a hazmat suit, snoring through the mask), a ghostly bellboy who
   bows, a station attendant who bows properly, students made of dusk, a white fox that sits like a
-  shrine statue, and more in the new levels.
+  shrine statue, a mall guard asleep on the job, a parking attendant, a bathhouse keeper and his
+  capybaras. Residents of one level sometimes wander into another through a crossed signal, and are
+  not happy about it.
 
 ## Levels
 
@@ -61,6 +63,9 @@ a light probe.
 | LEVEL 8 | Last-Train Underpass 終電後の地下通路 | Fluorescent, empty (Japan) | The station attendant; don't step onto the tracks |
 | LEVEL 1000 | Thousand Gates 千本鳥居 | Mystical, night (Japan) | The white fox, stone lanterns, a thousand torii |
 | LEVEL 11 | The Night Hotel | Dark, eerie | The bellboy, a grin in the dark |
+| LEVEL 94 | The Dead Mall | Warm, hollow | A security guard asleep at his desk, display mannequins that change pose, stopped escalators, a kiddie ride that plays to nobody, odd PA announcements |
+| LEVEL 6 | Parking Level P6 | Sodium-dark | The parking attendant and his barrier, cars that lock themselves as you pass, a car that honks a tune, a driverless car that creeps closer when you look away |
+| LEVEL 26 | Midnight Bathhouse 深夜の銭湯 | Steamy, Shōwa (Japan) | The keeper on the bandai, capybaras soaking with yuzu, Kerorin buckets, a Fuji mural that goes wrong the further you go |
 
 ## Controls
 
