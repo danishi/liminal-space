@@ -76,8 +76,7 @@ npm run preview
 
 ## Deployment
 
-`.github/workflows/deploy.yml` builds every push and pull request, and deploys `main` to GitHub
-Pages. Pages must use **Settings → Pages → Source: GitHub Actions**.
+`.github/workflows/deploy.yml` builds and deploys `main` to GitHub Pages on every push to `main`. Pages must use **Settings → Pages → Source: GitHub Actions**.
 
 ## Project layout
 

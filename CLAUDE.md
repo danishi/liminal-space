@@ -24,7 +24,7 @@ npm run dev     # local dev server
 npm run build   # production build to dist/ — run this before committing
 ```
 
-There is no test suite. Verify changes by building and, for gameplay changes, by running the game.
+CI only builds and deploys `main` to GitHub Pages; there is no PR check. There is no test suite. Verify changes by building and, for gameplay changes, by running the game.
 For headless checks use Playwright with Chromium (`--use-angle=swiftshader`); software rendering runs at
 about 1 fps, so drive gameplay by calling `window.__game.updatePlay(dt)` in a loop rather than waiting
 in real time.
