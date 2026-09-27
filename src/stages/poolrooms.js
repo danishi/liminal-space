@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL, WATER, DOORWAY, HOLE, buildWallFaces, buildCellQuads, buildFloors } from '../core/grid.js';
-import { tiles, pbr, waterNormalMap } from '../core/surfaces.js';
+import { waterNormalMap } from '../core/surfaces.js';
 import { caustics, labelTexture } from '../core/textures.js';
 import { mesh, buildShell, ceilingFixtures, doorModel, decorate } from './common.js';
 import { PropKit } from '../props/kit.js';
+import { photo, model } from '../core/assets.js';
 import * as P from '../props/library.js';
-import { NPC, mat } from '../entities/npc.js';
+import { NPC } from '../entities/npc.js';
 import { Watcher } from '../entities/creatures.js';
 
 const H = 4.2;
@@ -14,31 +15,11 @@ const POOL = -0.55;
 const WATER_Y = -0.12;
 
 function duckModel(scale = 1) {
+  // the scanned rubber duck is 0.29 m tall; scale 1 ≈ a real bath duck
   const g = new THREE.Group();
-  const yellow = mat(0xffd23f, { roughness: 0.3 });
-  const orange = mat(0xff8a1e, { roughness: 0.35 });
-  const black = mat(0x151515, { roughness: 0.15 });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16), yellow);
-  body.scale.set(1, 0.72, 1.25);
-  body.position.y = 0.25;
-  g.add(body);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.4, 12), yellow);
-  tail.rotation.x = -2.2;
-  tail.position.set(0, 0.5, -0.55);
-  g.add(tail);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 14), yellow);
-  head.position.set(0, 0.82, 0.3);
-  g.add(head);
-  const beak = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 8), orange);
-  beak.scale.set(1.2, 0.45, 1.3);
-  beak.position.set(0, 0.76, 0.6);
-  g.add(beak);
-  for (const x of [-0.13, 0.13]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), black);
-    e.position.set(x, 0.9, 0.55);
-    g.add(e);
-  }
-  g.scale.setScalar(scale);
+  const m = model('rubber_duck_toy');
+  m.scale.setScalar(scale * 1.6);
+  g.add(m);
   return g;
 }
 
@@ -48,6 +29,10 @@ export default {
   name: 'The Poolrooms',
   sub: 'Tiles, water, echoes',
   tint: 0xd8fbff,
+  assets: {
+    textures: ['long_white_tiles'],
+    models: ['rubber_duck_toy', 'lifebuoy', 'potted_plant_02', 'plastic_monobloc_chair_01'],
+  },
 
   build(world) {
     const rng = world.rng;
@@ -155,9 +140,10 @@ export default {
     }
 
     // ---- materials
-    const white = pbr(tiles('s-pool-white', { n: 8, base: [238, 242, 240], grout: [176, 188, 190], gloss: 0.06 }), { normalScale: 0.8 });
-    const blueSet = tiles('s-pool-blue', { n: 8, base: [96, 186, 205], grout: [80, 140, 156], jitter: 14, gloss: 0.06 });
-    const blue = pbr(blueSet, { emissive: 0x9ff4ff, emissiveMap: caustics(), emissiveIntensity: 0.3 });
+    // scanned glazed tiles; the basin is the same tile under blue water light
+    // uvScale 1 on 2 m UVs doubles the tile size to read as 15 cm pool tiles
+    const white = photo('long_white_tiles', { uvScale: 1, roughness: 0.45, color: new THREE.Color(1.3, 1.34, 1.32) });
+    const blue = photo('long_white_tiles', { uvScale: 1, roughness: 0.4, color: new THREE.Color(0.7, 1.05, 1.15), emissive: 0x9ff4ff, emissiveMap: caustics(), emissiveIntensity: 0.3 });
     const causticMap = blue.emissiveMap;
     const murk = Math.min(1, world.depth * 0.18);
     const waterMat = new THREE.MeshPhysicalMaterial({
@@ -202,11 +188,12 @@ export default {
       density: { wall: 0.12, high: 0.04, floor: 0.05, clutter: 0.08, ceil: 0 },
       waterSurface: surface,
       wall: [
-        { p: P.towelStack, w: 2 }, { p: P.pottedPalm, w: 2 }, { p: P.bench, w: 1 }, { p: P.lockers, w: 1.2, o: { color: 0x7fb8c8 } },
+        { p: P.towelStack, w: 2 }, { p: P.modelProp('potted_plant_02'), w: 2.5 }, { p: P.pottedPalm, w: 1 }, { p: P.bench, w: 1 },
+        { p: P.lockers, w: 1.2, o: { color: 0x7fb8c8 } }, { p: P.modelProp('plastic_monobloc_chair_01', { jitter: 0.3 }), w: 1.5 },
         { p: P.fakeDoor, w: 0.8, min: 0.6 },
       ],
-      high: [{ p: P.wallClock, w: 1 }, { p: P.handprints, w: 1, min: 0.8 }],
-      floor: [{ p: P.lounger, w: 3 }, { p: P.lifeguardChair, w: 1 }],
+      high: [{ p: P.modelProp('lifebuoy', { place: 'high', y: 1.5, collide: false }), w: 2 }, { p: P.wallClock, w: 1 }, { p: P.handprints, w: 1, min: 0.8 }],
+      floor: [{ p: P.lounger, w: 3 }, { p: P.lifeguardChair, w: 1 }, { p: P.modelProp('plastic_monobloc_chair_01', { jitter: 3 }), w: 1.5 }],
       clutter: [{ p: P.drainGrate, w: 2 }, { p: P.beachBall, w: 1.5, floats: true }, { p: P.puddle, w: 1 }],
     });
     kit.finish();
@@ -214,7 +201,7 @@ export default {
     Object.assign(world.env, {
       background: 0xd9eff0,
       fog: new THREE.FogExp2(new THREE.Color(0xcfe6e7).lerp(new THREE.Color(0x5a6a68), murk), 0.022 + murk * 0.02),
-      exposure: 0.78,
+      exposure: 0.92,
       toneMapping: THREE.NeutralToneMapping,
       postfx: { bloom: 0.3, bloomThreshold: 0.92, bloomRadius: 0.55, grain: 0.035, vignette: 0.22, chroma: 0.0012, scan: 0.02, tint: [0.97, 1.02, 1.03] },
       ao: 0.8,
@@ -238,8 +225,8 @@ export default {
     if (bigPool) {
       const cx = (bigPool.pi + bigPool.pw / 2) * cs;
       const cz = (bigPool.pj + bigPool.ph / 2) * cs;
-      const base = bigPool.r.h + WATER_Y - 0.25;
-      const model = duckModel(1.5);
+      const base = bigPool.r.h + WATER_Y - 0.08;
+      const model = duckModel(3.2);
       model.position.set(cx + cs * 0.5, base, cz);
       const duck = new NPC(world, {
         name: 'the Big Duck',
@@ -261,10 +248,10 @@ export default {
       world.add(duck);
     }
     for (const p of pools.slice(0, 7)) {
-      const model = duckModel(0.28);
+      const model = duckModel(0.62);
       const x = (p.pi + rng.float(0.3, p.pw - 0.3)) * cs;
       const z = (p.pj + rng.float(0.3, p.ph - 0.3)) * cs;
-      const baseY = p.r.h + WATER_Y - 0.03;
+      const baseY = p.r.h + WATER_Y - 0.06;
       model.position.set(x, baseY, z);
       model.rotation.y = rng.float(0, Math.PI * 2);
       const little = new NPC(world, { name: 'a duck', pos: model.position.clone(), model, radius: 0, face: false, marker: false, prompt: 'Poke the duck', conversations: [[]] });

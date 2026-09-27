@@ -333,23 +333,26 @@ export function carpetHotel() {
 }
 
 export function wallpaperDamask() {
-  return surface('s-hotel-wall', 512, (t) => {
+  // tone-on-tone flocked damask: a filled, petalled medallion in a satin sheen on a matte ground
+  return surface('s-hotel-wall2', 512, (t) => {
     const { size } = t;
     t.each((x, y, k) => {
-      const col = Math.floor(x / 64);
-      const lx = (x % 64) - 32;
-      const ly = ((y + (col % 2) * 48) % 96) - 48;
-      const r = Math.hypot(lx / 11, ly / 22);
-      const motif = Math.abs(r - 1) < 0.12 || (Math.abs(lx) < 1.5 && Math.abs(ly) < 30 && Math.abs(ly) > 22);
-      const stripe = (x % 64) > 28;
+      const row = Math.floor(y / 128);
+      const lx = ((x + (row % 2) * 32) % 64) - 32;
+      const ly = (y % 128) - 64;
+      const a = Math.atan2(ly, lx);
+      const r = Math.hypot(lx / 26, ly / 54);
+      const petal = 0.82 + 0.18 * Math.cos(a * 6) - 0.1 * Math.cos(a * 2);
+      const motif = (r < petal && r > petal * 0.62) || r < 0.2 || (Math.abs(lx) < 1.2 && r < petal);
       const n = fbm(x, y, size, 6, 4, 8);
-      const v = 0.8 + n * 0.3 - (stripe ? 0.08 : 0);
-      const c = motif ? [150, 132, 86] : [44, 58, 47];
+      const fine = fbm(x, y, size, 128, 2, 5);
+      const v = 0.82 + n * 0.22 + fine * 0.08;
+      const c = motif ? [62, 72, 54] : [42, 54, 44];
       t.set(x, y, clamp(c[0] * v), clamp(c[1] * v), clamp(c[2] * v));
-      t.H[k] = motif ? 0.62 : 0.5 + fbm(x, y, size, 96, 1, 4) * 0.04;
-      t.R[k] = motif ? 0.45 : 0.85;
+      t.H[k] = (motif ? 0.56 : 0.5) + fine * 0.03;
+      t.R[k] = motif ? 0.5 : 0.88;
     });
-  }, { normal: 2 });
+  }, { normal: 1.2 });
 }
 
 export function woodPanel(key = 's-wood', base = [78, 44, 28], gloss = 0.35) {

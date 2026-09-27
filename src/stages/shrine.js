@@ -1,15 +1,16 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL, HOLE, DIRS, buildWallFaces, buildFloors, buildRisers } from '../core/grid.js';
-import { bambooGrove, flagstone, gravel, woodPanel, pbr } from '../core/surfaces.js';
+import { woodPanel, pbr } from '../core/surfaces.js';
 import { glowSprite } from '../core/textures.js';
 import { mesh, doorModel, decorate, glow } from './common.js';
 import { LightPool } from '../core/lights.js';
 import { PropKit } from '../props/kit.js';
+import { photo, texMap, hdri } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { Watcher, Follower } from '../entities/creatures.js';
 import { NPC, mat } from '../entities/npc.js';
 
-const WALL_H = 7;
+const WALL_H = 2.3; // bamboo fence; the grove towers behind it
 
 function carveMaze(g, rng) {
   const stack = [[1, 1]];
@@ -85,38 +86,17 @@ function kitsuneModel() {
   return g;
 }
 
-function nightSky() {
-  const mat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    depthWrite: false,
-    fog: false,
-    uniforms: { moonDir: { value: new THREE.Vector3(-0.3, 0.45, -0.84).normalize() } },
-    vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `
-      uniform vec3 moonDir; varying vec3 vDir;
-      float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,45.164))) * 43758.5453); }
-      void main(){
-        float h = vDir.y;
-        vec3 c = mix(vec3(0.16,0.1,0.2), vec3(0.03,0.04,0.1), smoothstep(-0.05, 0.6, h));
-        c += vec3(0.35,0.16,0.12) * pow(1.0 - clamp(h, 0.0, 1.0), 6.0) * 0.6;
-        float s = max(dot(normalize(vDir), moonDir), 0.0);
-        c += vec3(1.0,0.97,0.9) * (smoothstep(0.9993, 0.9996, s) * 1.5 + pow(s, 60.0) * 0.12);
-        vec3 q = floor(vDir * 300.0);
-        c += vec3(step(0.9975, hash(q))) * smoothstep(0.1, 0.5, h) * 0.8;
-        gl_FragColor = vec4(c, 1.0);
-      }`,
-  });
-  const m = new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), mat);
-  m.renderOrder = -1;
-  return m;
-}
-
 export default {
   id: 'shrine',
   code: 'LEVEL 1000',
   name: 'Thousand Gates',
   sub: '千本鳥居 · A shrine path in Japan at night',
   tint: 0xff8a50,
+  assets: {
+    textures: ['bamboo_wall', 'stone_pathway_02', 'clean_pebbles', 'brown_planks_03'],
+    models: ['wooden_lantern_01', 'rock_moss_set_01', 'fern_02', 'wooden_bucket_01'],
+    hdris: ['qwantani_night_puresky'],
+  },
 
   build(world) {
     const rng = world.rng;
@@ -157,17 +137,44 @@ export default {
     for (const [i, j] of deadEnds.slice(0, 1 + world.depth)) g.set(i, j, HOLE);
 
     // ---- geometry
-    const bamboo = pbr(bambooGrove(), { normalScale: 0.8 });
-    const stone = pbr(flagstone(), { normalScale: 1 });
-    const grav = pbr(gravel(), { normalScale: 1 });
-    mesh(world, buildWallFaces(g, { y0: (i, j) => g.heightOf(i, j) - 0.05, y1: (i, j) => Math.max(0, g.heightOf(i, j)) + WALL_H, uScale: 4, vScale: 4 }), bamboo);
+    const bamboo = photo('bamboo_wall', { uvScale: 2, color: 0xb8a888 });
+    const stone = photo('stone_pathway_02', { uvScale: 2.4, color: 0xc8c4bc });
+    const grav = photo('clean_pebbles', { uvScale: 2, color: 0xd0ccc4 });
+    mesh(world, buildWallFaces(g, { y0: (i, j) => g.heightOf(i, j) - 0.05, y1: (i, j) => g.heightOf(i, j) + WALL_H, uScale: 2, vScale: 2 }), bamboo);
+    // fence top rail
+    mesh(world, buildWallFaces(g, { y0: (i, j) => g.heightOf(i, j) + WALL_H - 0.08, y1: (i, j) => g.heightOf(i, j) + WALL_H, uScale: 1, vScale: 1, inset: 0.04 }), new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.7 }));
     mesh(world, buildFloors(g, (c, i, j) => c === FLOOR && !inClearing(i, j), 2.4), stone);
+    // the grove: tall bamboo culms growing in every wall cell behind the fences
+    const culms = [];
+    for (let j = 0; j < W; j++) {
+      for (let i = 0; i < W; i++) {
+        if (g.get(i, j) !== WALL) continue;
+        const n = 3 + rng.int(0, 3);
+        for (let k = 0; k < n; k++) {
+          culms.push({ x: (i + rng.float(0.1, 0.9)) * cs, z: (j + rng.float(0.1, 0.9)) * cs, y: g.heightOf(i, j) - 0.2, h: rng.float(7, 13), r: rng.float(0.035, 0.07), lean: rng.float(-0.06, 0.06), rot: rng.float(0, 6) });
+        }
+      }
+    }
+    const culmMat = new THREE.MeshStandardMaterial({ color: 0x55703a, roughness: 0.45 });
+    const culmGeo = new THREE.CylinderGeometry(1, 1, 1, 7, 1, true);
+    culmGeo.translate(0, 0.5, 0);
+    const culmMesh = new THREE.InstancedMesh(culmGeo, culmMat, culms.length);
+    const cm = new THREE.Matrix4();
+    const cq = new THREE.Quaternion();
+    culms.forEach((c, n) => {
+      cq.setFromEuler(new THREE.Euler(c.lean, c.rot, c.lean * 0.7));
+      cm.compose(new THREE.Vector3(c.x, c.y, c.z), cq, new THREE.Vector3(c.r, c.h, c.r));
+      culmMesh.setMatrixAt(n, cm);
+      culmMesh.setColorAt(n, new THREE.Color().setHSL(0.24 + rng.float(-0.03, 0.03), 0.35, 0.22 + rng.float(-0.06, 0.08)));
+    });
+    world.root.add(culmMesh);
     mesh(world, buildFloors(g, (c, i, j) => c === FLOOR && inClearing(i, j), 2), grav);
     mesh(world, buildRisers(g, { pred: (c) => c !== WALL, uScale: 2.4, vScale: 2.4 }), stone);
-    world.root.add(nightSky());
+    // a real night sky
 
     // ---- torii tunnels (instanced), lanterns (light pool)
-    const lacquer = new THREE.MeshPhysicalMaterial({ color: 0xd8401e, roughness: 0.35, clearcoat: 0.8, clearcoatRoughness: 0.3 });
+    // vermilion lacquer over real wood grain
+    const lacquer = new THREE.MeshPhysicalMaterial({ color: 0xc8341a, roughness: 0.42, clearcoat: 0.7, clearcoatRoughness: 0.35, normalMap: texMap('brown_planks_03', 'normalMap', 1), normalScale: new THREE.Vector2(0.6, 0.6), roughnessMap: texMap('brown_planks_03', 'arm', 1) });
     const black = new THREE.MeshStandardMaterial({ color: 0x151210, roughness: 0.6 });
     const gates = [];
     const kitLanterns = [];
@@ -260,11 +267,20 @@ export default {
         for (const s of [-1, 1]) kit.add(P.foxStatue.build(kit, rng), cx + s * 1.3, cz, s * -0.3, { y, collide: [0.5, 0.6] });
       }
     }
+    for (const c of clearings) {
+      if (!rng.chance(0.6)) continue;
+      const y = g.heightOf(c.i, c.j);
+      kit.add(P.modelProp('rock_moss_set_01', { scale: 0.22 }).build(kit, rng), (c.i + 0.4) * cs, (c.j + c.h - 0.4) * cs, rng.float(0, 6), { y, collide: [1.4, 1.2] });
+      if (rng.chance(0.6)) kit.add(P.modelProp('wooden_bucket_01').build(kit, rng), (c.i + c.w - 0.5) * cs, (c.j + 0.5) * cs, rng.float(0, 6), { y, collide: [0.4, 0.4] });
+    }
     decorate(world, kit, {
-      density: { wall: 0.05, high: 0.06, floor: 0.04, clutter: 0.12, ceil: 0 },
-      wall: [{ p: P.jizo, w: 2, o: {} }, { p: P.foxStatue, w: 1, min: 0.3 }],
+      density: { wall: 0.07, high: 0.06, floor: 0.04, clutter: 0.16, ceil: 0 },
+      wall: [{ p: P.jizo, w: 2, o: {} }, { p: P.foxStatue, w: 1, min: 0.3 }, { p: P.modelProp('wooden_lantern_01', { jitter: 0.5 }), w: 1.5 }],
       high: [{ p: P.foxMask, w: 1, min: 0.45 }],
-      clutter: [{ p: P.jizo, w: 1.5, min: 0.25 }, { p: P.spiderLilies, w: 2.5, min: 0.15 }, { p: P.jizo, w: 2, min: 0.8, o: { eerie: true } }],
+      clutter: [
+        { p: P.modelProp('fern_02', { collide: false, scale: 0.55, jitter: 3 }), w: 3 }, { p: P.jizo, w: 1.5, min: 0.25 },
+        { p: P.spiderLilies, w: 2.5, min: 0.15 }, { p: P.jizo, w: 2, min: 0.8, o: { eerie: true } },
+      ],
     });
     kit.finish();
 
@@ -291,6 +307,8 @@ export default {
 
     Object.assign(world.env, {
       background: 0x0c0a14,
+      backgroundTex: hdri('qwantani_night_puresky'),
+      backgroundIntensity: 0.5,
       fog: new THREE.FogExp2(0x16132a, 0.045 + world.depth * 0.004),
       exposure: 1.25,
       postfx: { bloom: 0.55, bloomThreshold: 0.7, bloomRadius: 0.6, grain: 0.07, vignette: 0.42, chroma: 0.0018, scan: 0.03, tint: [1.02, 0.97, 1.04] },

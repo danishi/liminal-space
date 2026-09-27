@@ -4,14 +4,15 @@ import { AudioEngine } from '../core/audio.js';
 import { Input } from '../core/input.js';
 import { setMaxAnisotropy } from '../core/textures.js';
 import { setSurfaceAnisotropy } from '../core/surfaces.js';
+import { preload, setAssetAnisotropy } from '../core/assets.js';
 import { Player } from './player.js';
 import { World } from './world.js';
 import { STAGES } from '../stages/index.js';
 
 const QUALITY = {
-  low: { pr: 0.75, bloom: false, lights: 4, shadows: false, ao: false, env: 128, probeFollow: false },
-  mid: { pr: 1, bloom: true, lights: 6, shadows: false, ao: true, env: 256, probeFollow: false },
-  high: { pr: 1.5, bloom: true, lights: 8, shadows: true, ao: true, env: 256, probeFollow: true },
+  low: { pr: 0.75, bloom: false, lights: 4, shadows: false, ao: false, env: 128, probeFollow: false, msaa: 0 },
+  mid: { pr: 1, bloom: true, lights: 6, shadows: false, ao: true, env: 256, probeFollow: false, msaa: 4 },
+  high: { pr: 1.5, bloom: true, lights: 8, shadows: true, ao: true, env: 256, probeFollow: true, msaa: 4 },
 };
 
 /**
@@ -33,6 +34,7 @@ export class Game {
     const aniso = this.renderer.capabilities.getMaxAnisotropy();
     setMaxAnisotropy(aniso);
     setSurfaceAnisotropy(aniso);
+    setAssetAnisotropy(aniso);
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
 
     this.scene = new THREE.Scene();
@@ -115,6 +117,7 @@ export class Game {
     const h = innerHeight;
     const pr = Math.min(devicePixelRatio || 1, this.quality.pr);
     this.renderer.setPixelRatio(pr);
+    this.post.setSamples(this.quality.msaa);
     this.renderer.setSize(w, h, false);
     this.post.setSize(w, h, pr);
     this.camera.aspect = w / h;
@@ -178,7 +181,11 @@ export class Game {
 
   configureEnv(world) {
     const env = world.env;
-    this.scene.background = new THREE.Color(env.background);
+    if (env.backgroundTex) {
+      this.scene.background = env.backgroundTex;
+      this.scene.backgroundIntensity = env.backgroundIntensity ?? 1;
+      this.scene.backgroundRotation.set(0, env.backgroundRotation ?? 0, 0);
+    } else this.scene.background = new THREE.Color(env.background);
     this.scene.fog = env.fog;
     this.renderer.toneMapping = env.toneMapping ?? THREE.AgXToneMapping;
     this.renderer.toneMappingExposure = env.exposure;
@@ -190,10 +197,12 @@ export class Game {
     this.flashlight.distance = env.flashlightDistance || 26;
   }
 
-  showTitle() {
+  async showTitle() {
     this.state = 'title';
     this.input.enabled = false;
-    this.buildWorld(this.randomStage(), { attract: true, seed: (Math.random() * 1e6) | 0 });
+    const index = this.randomStage();
+    await preload(STAGES[index].assets);
+    this.buildWorld(index, { attract: true, seed: (Math.random() * 1e6) | 0 });
     this.ui.show('title');
     this.ui.hud(false);
     if (this.audio.ready) this.startAmbience();
@@ -225,6 +234,7 @@ export class Game {
     await this.ui.fadeOut(how === 'fall' || how === 'time');
     if (how !== 'start') this.depth++;
     const index = dest ?? this.randomStage(this.stageIndex);
+    await preload(STAGES[index].assets);
     this.buildWorld(index);
     this.startAmbience();
     this.ui.show(null);
@@ -268,7 +278,7 @@ export class Game {
     this.audio.setDucked(false);
     this.audio.setFear(0);
     await this.ui.fadeOut();
-    this.showTitle();
+    await this.showTitle();
     await this.ui.fadeIn();
   }
 

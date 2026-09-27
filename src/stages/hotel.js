@@ -1,15 +1,28 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL, HOLE, DIRS, wallMounts } from '../core/grid.js';
-import { carpetHotel, wallpaperDamask, woodPanel, paint, pbr } from '../core/surfaces.js';
+import { carpetHotel, wallpaperDamask, paint, pbr } from '../core/surfaces.js';
 import { hotelDoor, labelTexture } from '../core/textures.js';
 import { buildShell, glow, decorate } from './common.js';
 import { LightPool } from '../core/lights.js';
 import { PropKit } from '../props/kit.js';
+import { photo, model } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { Watcher, Grin } from '../entities/creatures.js';
 import { NPC } from '../entities/npc.js';
 
 const H = 2.7;
+
+const M = {
+  nightstand: {
+    place: 'wall', fp: [0.57, 0.42],
+    build(k, rng) {
+      const g = new THREE.Group();
+      k.model(g, 'ClassicNightstand_01');
+      k.model(g, 'antique_ceramic_vase_01', rng.float(-0.1, 0.1), 0.7, 0, rng.float(0, 6), 0.8);
+      return g;
+    },
+  },
+};
 
 function carveMaze(g, rng) {
   const stack = [[1, 1]];
@@ -107,6 +120,10 @@ export default {
   name: 'The Night Hotel',
   sub: 'Red carpet, no guests',
   tint: 0xffc080,
+  assets: {
+    textures: ['dark_paneled_wood', 'decrepit_wallpaper', 'dirty_carpet', 'ceiling_interior'],
+    models: ['ArmChair_01', 'Sofa_01', 'CoffeeCart_01', 'Chandelier_02', 'ClassicNightstand_01', 'fancy_picture_frame_01', 'ornate_mirror_01', 'vintage_grandfather_clock_01', 'antique_ceramic_vase_01', 'vintage_suitcase'],
+  },
 
   build(world) {
     const rng = world.rng;
@@ -137,19 +154,23 @@ export default {
     const shafts = deadEnds.slice(0, 1 + Math.min(4, world.depth));
     for (const [i, j] of shafts) g.set(i, j, HOLE);
 
-    const wallMat = pbr(wallpaperDamask(), { normalScale: 0.6 });
-    const woodMat = pbr(woodPanel('s-hotel-wood', [72, 40, 24], 0.3), { normalScale: 0.5 });
+    // damask colours are ours; paper texture, wood panelling and carpet pile are scanned
+    // damask at a real roll's pattern repeat (~25 cm) over the scanned paper's relief
+    const damask = wallpaperDamask().map.clone();
+    damask.repeat.set(2, 2);
+    const wallMat = photo('decrepit_wallpaper', { uvScale: 2.2, map: damask, normalScale: 0.8 });
+    const woodMat = photo('dark_paneled_wood', { uvScale: 1.4, roughness: 0.8 });
     const railMat = pbr(paint('s-hotel-rail', [92, 54, 34], { rough: 0.35 }));
-    const carpet = pbr(carpetHotel(), { normalScale: 1 });
+    const carpet = photo('dirty_carpet', { uvScale: 2.2, map: carpetHotel().map, normalScale: 1.1 });
     buildShell(world, {
       height: H,
       wall: { mat: wallMat, u: 2.2, v: 2.2 },
       floor: { mat: carpet, uv: 2.2 },
-      ceilMat: { mat: pbr(paint('s-hotel-ceil', [168, 152, 126], { rough: 0.9 })), uv: 3 },
+      ceilMat: { mat: photo('ceiling_interior', { uvScale: 3, color: 0xcdbb9c }), uv: 3 },
       stairs: carpet,
       riserMat: woodMat,
       trims: [
-        { mat: woodMat, y0: 0, y1: 0.95, inset: 0.02, u: 1, v: 1 },
+        { mat: woodMat, y0: 0, y1: 0.95, inset: 0.02, u: 1.4, v: 1.4 },
         { mat: railMat, y0: 0.93, y1: 1.02, inset: 0.035 },
         { mat: railMat, y0: H - 0.12, y1: H, inset: 0.03 },
       ],
@@ -157,6 +178,21 @@ export default {
     world.root.add(new THREE.HemisphereLight(0x6a5048, 0x1a1010, 0.65));
 
     const kit = new PropKit(world);
+    // chandeliers over the lobbies, each a real light
+    for (const l of lobbies.slice(1)) {
+      const cx = (l.i + 2) * cs;
+      const cz = (l.j + 2) * cs;
+      const ch = new THREE.Group();
+      const m = model('Chandelier_02');
+      m.position.y = -0.85;
+      ch.add(m);
+      ch.position.set(cx, g.heightOf(l.i + 1, l.j + 1) + H, cz);
+      world.root.add(ch);
+      world.bakeSources.push({ pos: new THREE.Vector3(cx, ch.position.y - 0.6, cz), color: new THREE.Color(1, 0.78, 0.5), intensity: 9 });
+      const bulb = glow(0xffd9a0, 1.6, 0.5);
+      bulb.position.set(cx, ch.position.y - 0.62, cz);
+      world.root.add(bulb);
+    }
     // elevator frames in front of the shafts
     const used = (world.usedMounts = new Set());
     for (const [i, j] of shafts) {
@@ -214,12 +250,17 @@ export default {
       density: { wall: 0.12, high: 0.16, floor: 0.05, clutter: 0.07, ceil: 0 },
       keepClear: (i, j) => g.ramp[j * W + i] > 0,
       wall: [
-        { p: P.vaseTable, w: 3 }, { p: P.armchair, w: 2 }, { p: P.iceMachine, w: 0.8 }, { p: P.grandfatherClock, w: 1 },
+        { p: P.vaseTable, w: 2 }, { p: M.nightstand, w: 2 }, { p: P.modelProp('ArmChair_01'), w: 2 }, { p: P.modelProp('Sofa_01'), w: 1.2 },
+        { p: P.iceMachine, w: 0.8 }, { p: P.modelProp('vintage_grandfather_clock_01'), w: 1 },
         { p: P.extinguisher, w: 1 }, { p: P.armchair, w: 1, min: 0.8, o: { eerie: true } }, { p: P.vaseTable, w: 1.5, min: 0.7, o: { eerie: true } },
       ],
-      high: [{ p: P.painting, w: 3 }, { p: P.painting, w: 2, min: 0.55, o: { eerie: true } }, { p: P.wallClock, w: 0.6 }],
-      floor: [{ p: P.roomServiceCart, w: 2 }, { p: P.luggageCart, w: 1 }, { p: P.roomServiceCart, w: 1, min: 0.7, o: { eerie: true } }],
-      clutter: [{ p: P.suitcase, w: 2 }, { p: P.paperScatter, w: 1, min: 0.5 }, { p: P.lostShoe, w: 1, min: 0.6 }],
+      high: [
+        { p: P.modelProp('fancy_picture_frame_01', { place: 'high', y: 1.5, collide: false, scale: 1.3 }), w: 2 }, { p: P.painting, w: 1.5 },
+        { p: P.painting, w: 2, min: 0.55, o: { eerie: true } }, { p: P.modelProp('ornate_mirror_01', { place: 'high', y: 1.2, collide: false, scale: 1.3 }), w: 1 },
+        { p: P.wallClock, w: 0.6 },
+      ],
+      floor: [{ p: P.modelProp('CoffeeCart_01', { scale: 0.7 }), w: 1.2 }, { p: P.roomServiceCart, w: 1.5 }, { p: P.luggageCart, w: 1 }, { p: P.roomServiceCart, w: 1, min: 0.7, o: { eerie: true } }],
+      clutter: [{ p: P.modelProp('vintage_suitcase', { jitter: 3, scale: 0.8 }), w: 1.5 }, { p: P.suitcase, w: 1 }, { p: P.paperScatter, w: 1, min: 0.5 }, { p: P.lostShoe, w: 1, min: 0.6 }],
     });
     kit.finish();
 
@@ -229,6 +270,8 @@ export default {
       exposure: 1.35,
       postfx: { bloom: 0.45, bloomThreshold: 0.72, bloomRadius: 0.5, grain: 0.08, vignette: 0.45, chroma: 0.0022, scan: 0.04, tint: [1.05, 0.96, 0.9] },
       ao: 1,
+      // keep some ambient so walls beside you never go fully black outside the torch cone
+      bake: { hemi: 0.9 },
       envIntensity: 0.35,
       ambience: 'hotel',
       reverb: [1.4, 3.5],

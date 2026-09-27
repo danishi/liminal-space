@@ -58,7 +58,10 @@ inverted look, head bob, reduced screen effects, FPS counter) are saved in the b
 
 ## Graphics
 
-- PBR materials with procedural normal and roughness maps
+- Photo-scanned materials and models (Poly Haven, CC0): carpet, wallpaper, tiles, plaster, linoleum,
+  bamboo, stone paths; desks, chairs, sofas, payphones, lanterns, rocks and more, at real-world scale
+- Real HDRI skies and window views (the school's windows look out on a photographed suburb)
+- Procedural PBR surfaces for everything else (normal and roughness maps generated on canvas)
 - Baked lighting: when a level is built, every fixture's light (blocked by walls), a bounce term and
   ambient occlusion are computed per vertex, so the whole level is lit, not only the lights near you
 - Flashlight shadows in dark levels (Medium and High)
@@ -67,6 +70,11 @@ inverted look, head bob, reduced screen effects, FPS counter) are saved in the b
 - Rectangular area lights for fluorescent panels, pooled so only the nearest fixtures are real lights
 - AgX / neutral tone mapping, bloom, and a camcorder pass (grain, vignette, chromatic aberration)
 - Static props are merged per material, so hundreds of props cost only a few draw calls
+
+## Credits
+
+Textures, models and HDRIs are from [Poly Haven](https://polyhaven.com) and are CC0 (public domain).
+`scripts/fetch-assets.mjs` downloads them and optimizes them into `public/assets/`.
 
 ## Development
 

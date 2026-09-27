@@ -294,3 +294,44 @@ export function stairRun(g, i, j, dir, n, from, rise) {
 }
 
 export { WALL, VOID, HOLE };
+
+/**
+ * A window that looks out onto an HDRI panorama: the outside is sampled along
+ * the view direction (so it has correct parallax, like a real view at
+ * infinity), and an RGBA frame texture draws mullions and wall over it.
+ */
+export function windowViewMaterial(envTex, frameTex, { exposure = 1, rotation = 0 } = {}) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      tEnv: { value: envTex },
+      tFrame: { value: frameTex },
+      uExposure: { value: exposure },
+      uFrameLight: { value: 1 },
+      uRot: { value: rotation },
+    },
+    vertexShader: /* glsl */ `
+      varying vec3 vWorld;
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vWorld = w.xyz;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D tEnv;
+      uniform sampler2D tFrame;
+      uniform float uExposure, uFrameLight, uRot;
+      varying vec3 vWorld;
+      varying vec2 vUv;
+      void main() {
+        vec3 d = normalize(vWorld - cameraPosition);
+        float c = cos(uRot), s = sin(uRot);
+        d = vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+        vec2 uv = vec2(atan(d.z, d.x) * 0.15915494 + 0.5, asin(clamp(d.y, -1.0, 1.0)) * 0.31830989 + 0.5);
+        vec3 sky = texture2D(tEnv, uv).rgb * uExposure;
+        vec4 f = texture2D(tFrame, vUv);
+        gl_FragColor = vec4(mix(sky, f.rgb * uFrameLight, f.a), 1.0);
+      }`,
+  });
+}

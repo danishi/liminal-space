@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { model as loadModelClone } from '../core/assets.js';
 
 const _m = new THREE.Matrix4();
 
@@ -73,6 +74,16 @@ export class PropKit {
     return this.mesh(g, new THREE.TorusGeometry(r, tube, 8, 24, arc), mat, x, y, z, rx, ry, rz);
   }
 
+  /** Adds a clone of a preloaded photo-scanned model to group g. */
+  model(g, id, x = 0, y = 0, z = 0, ry = 0, scale = 1) {
+    const m = loadModelClone(id);
+    m.position.set(x, y, z);
+    m.rotation.y = ry;
+    m.scale.setScalar(scale);
+    g.add(m);
+    return m;
+  }
+
   // ---- placement ----------------------------------------------------------
 
   /**
@@ -108,18 +119,15 @@ export class PropKit {
       const live = [];
       g.traverse((o) => {
         if (!o.isMesh) return;
-        if (o.userData.keep || o.isInstancedMesh) {
+        if (o.userData.keep || o.isInstancedMesh || Array.isArray(o.material)) {
           live.push(o);
           return;
         }
-        const geo = o.geometry.index ? o.geometry : o.geometry;
-        const clone = geo.clone();
-        for (const name of Object.keys(clone.attributes)) if (!['position', 'normal', 'uv'].includes(name)) clone.deleteAttribute(name);
+        const clone = toFloatGeometry(o.geometry);
         clone.applyMatrix4(_m.copy(o.matrixWorld));
-        if (!clone.index) clone.setIndex([...Array(clone.attributes.position.count).keys()]);
         if (!byMat.has(o.material)) byMat.set(o.material, []);
         byMat.get(o.material).push(clone);
-        o.geometry.dispose();
+        if (!o.material.userData.shared) o.geometry.dispose();
       });
       if (live.length) {
         // keep the live meshes in their group; strip merged ones
@@ -151,6 +159,33 @@ export class PropKit {
     }
     this.placed = [];
   }
+}
+
+/**
+ * Copy of a geometry with only float position/normal/uv (models use
+ * quantized attributes, which can't be transformed or merged as-is).
+ */
+function toFloatGeometry(src) {
+  const out = new THREE.BufferGeometry();
+  const count = src.attributes.position.count;
+  for (const [name, size] of [['position', 3], ['normal', 3], ['uv', 2]]) {
+    const a = src.attributes[name];
+    const arr = new Float32Array(count * size);
+    if (a) {
+      for (let i = 0; i < count; i++) {
+        arr[i * size] = a.getX(i);
+        arr[i * size + 1] = a.getY(i);
+        if (size === 3) arr[i * size + 2] = a.getZ(i);
+      }
+    } else if (name === 'normal') {
+      for (let i = 0; i < count; i++) arr[i * 3 + 1] = 1;
+    }
+    out.setAttribute(name, new THREE.BufferAttribute(arr, size));
+  }
+  if (src.index) out.setIndex(Array.from(src.index.array));
+  else out.setIndex([...Array(count).keys()]);
+  if (src.groups.length) for (const gr of src.groups) out.addGroup(gr.start, gr.count, gr.materialIndex);
+  return out;
 }
 
 /** Marks a mesh as live (not merged). */

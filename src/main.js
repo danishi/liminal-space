@@ -1,12 +1,16 @@
 import { UI } from './ui/ui.js';
 import { Game } from './game/game.js';
 import { loadSettings, saveSettings } from './core/settings.js';
+import * as THREE from 'three';
+import * as assets from './core/assets.js';
 
 const canvas = document.getElementById('view');
 const ui = new UI();
 const settings = loadSettings();
 const game = new Game(canvas, ui, settings);
 window.__game = game; // handy for debugging from the console
+window.__assets = assets;
+window.__THREE = THREE;
 
 ui.bindSettings(settings, (s) => {
   saveSettings(s);
@@ -75,7 +79,7 @@ addEventListener('keydown', (e) => {
 });
 
 // Boot once fonts are in (or after a short timeout).
-Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]).then(() => {
-  game.showTitle();
+Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]).then(async () => {
+  await game.showTitle();
   ui.bootDone();
 });

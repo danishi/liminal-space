@@ -47,6 +47,12 @@ in real time.
 - `src/props/` — `PropKit` builds props from primitives and merges static meshes per material in
   `finish()`; mark animated or individually-changing meshes with `keep()`. `library.js` holds the prop
   builders; each has `place` (`wall`, `high`, `floor`, `clutter`, `ceil`) and an optional footprint `fp`.
+- `src/core/assets.js` — photo-scanned CC0 assets from Poly Haven in `public/assets` (1k texture sets as
+  WebP, meshopt-compressed GLB models, HDRIs), listed in `manifest.json`. A stage declares what it needs
+  in `assets: { textures, models, hdris }`; the game awaits `preload()` before `build`, so builders use
+  the synchronous getters (`photo(id, { uvScale })`, `model(id)`, `hdri(id)`). `photo` repeats the
+  texture to its real-world size given the geometry's UV scale. `PropKit.model()` and
+  `P.modelProp(id)` place models; model materials are shared (`userData.shared`) and never disposed.
 - `src/core/surfaces.js` — procedural PBR surfaces (colour + normal + roughness), cached by key.
 - `src/core/bake.js` — per-vertex baked lighting and AO (`bake` attribute, applied through a material
   shader patch). `World.bake()` runs after `stage.build`; light pool fixtures are sources automatically,
@@ -56,7 +62,10 @@ in real time.
 
 ## Conventions
 
-- No binary assets. Textures are canvas-generated; sounds are Web Audio.
+- Binary assets are CC0 only (Poly Haven) and are fetched and optimized by `node scripts/fetch-assets.mjs`
+  (downloads, converts textures to WebP, compresses models, writes the manifest). Add new ones to the
+  lists in that script rather than committing hand-made files. Signs, posters and small details stay
+  canvas-generated; sounds are Web Audio.
 - Keep the number of lights constant within a level (the flashlight always exists, light pools have a
   fixed size) to avoid shader recompiles mid-level.
 - Apparitions are never lethal. The game has no fail state.

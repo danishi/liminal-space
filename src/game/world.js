@@ -294,6 +294,7 @@ export class World {
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
+          if (m.userData.shared) continue;
           for (const key of ['map', 'emissiveMap', 'alphaMap', 'normalMap', 'roughnessMap']) {
             const t = m[key];
             if (t && !t.userData.cached) t.dispose();

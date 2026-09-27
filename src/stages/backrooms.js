@@ -1,14 +1,39 @@
 import * as THREE from 'three';
 import { Grid, FLOOR, WALL, HOLE } from '../core/grid.js';
-import { wallpaperYellow, carpetTan, ceilingTile, pbr, paint } from '../core/surfaces.js';
+import { ceilingTile, pbr, paint } from '../core/surfaces.js';
 import { exitSign } from '../core/textures.js';
 import { buildShell, ceilingFixtures, doorModel, glow, decorate, stairRun } from './common.js';
 import { PropKit } from '../props/kit.js';
+import { photo } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { Watcher, Follower } from '../entities/creatures.js';
 import { NPC, mat } from '../entities/npc.js';
 
 const H = 2.7;
+
+// photo-scanned props
+const M = {
+  box: P.modelProp('cardboard_box_01', { jitter: 0.3, scaleJitter: 0.15 }),
+  box2: P.modelProp('cardboard_box_01', { scale: 1.4, jitter: 0.2 }),
+  cabinet: P.modelProp('drawer_cabinet'),
+  extinguisher: P.modelProp('korean_fire_extinguisher_01'),
+  bins: P.modelProp('metal_trash_can', { scale: 0.9 }),
+  desk: P.modelProp('metal_office_desk', { scale: 0.85 }),
+  ladder: P.modelProp('ladder_sectioned_01'),
+  tv: P.modelProp('Television_01', { jitter: 0.5 }),
+  alarm: P.modelProp('fire_alarm', { place: 'high', y: 1.45, collide: false }),
+  chair: P.modelProp('plastic_monobloc_chair_01', { jitter: 3 }),
+  sign: P.modelProp('WetFloorSign_01', { jitter: 3 }),
+  chairTipped: {
+    place: 'floor', fp: [0.7, 0.9],
+    build(k, rng) {
+      const g = new THREE.Group();
+      const m = k.model(g, 'plastic_monobloc_chair_01', 0, 0.32, 0, rng.float(0, 6));
+      m.rotation.x = -Math.PI / 2;
+      return g;
+    },
+  },
+};
 
 function drifterModel() {
   const g = new THREE.Group();
@@ -103,6 +128,10 @@ export default {
   name: 'The Backrooms',
   sub: 'Endless yellow rooms',
   tint: 0xfff0b0,
+  assets: {
+    textures: ['decrepit_wallpaper', 'dirty_carpet'],
+    models: ['cardboard_box_01', 'WetFloorSign_01', 'metal_office_desk', 'plastic_monobloc_chair_01', 'metal_trash_can', 'drawer_cabinet', 'korean_fire_extinguisher_01', 'Television_01', 'ladder_sectioned_01', 'fire_alarm'],
+  },
 
   build(world) {
     const rng = world.rng;
@@ -148,8 +177,9 @@ export default {
     const far = world.pickFarCells(holes, { minFrac: 0.45, spacing: 5, filter: (i, j) => g.get(i, j) === FLOOR && !g.ramp[j * W + i] && g.countSolidNeighbors(i, j) === 0 });
     for (const [i, j] of far) g.set(i, j, HOLE);
 
-    const wallMat = pbr(wallpaperYellow(), { normalScale: 0.6 });
-    const floorMat = pbr(carpetTan(), { normalScale: 1.2 });
+    // photo-scanned wallpaper tinted mustard; carpet colour is ours, its fibres are scanned
+    const wallMat = photo('decrepit_wallpaper', { uvScale: 2.7, color: new THREE.Color(1.38, 1.2, 0.52) });
+    const floorMat = photo('dirty_carpet', { uvScale: 1.2, color: new THREE.Color(2.7, 2.25, 1.1), normalScale: 0.7 });
     const ceilMat = pbr(ceilingTile(), { normalScale: 0.8 });
     const baseMat = pbr(paint('s-br-base', [140, 122, 60], { rough: 0.5 }));
     buildShell(world, {
@@ -170,16 +200,18 @@ export default {
     decorate(world, kit, {
       density: { wall: 0.14, high: 0.14, floor: 0.07, clutter: 0.1, ceil: 0.06 },
       wall: [
-        { p: P.cardboardBoxes, w: 3 }, { p: P.filingCabinet, w: 2 }, { p: P.waterCooler, w: 1 }, { p: P.extinguisher, w: 1 },
-        { p: P.mattress, w: 1, min: 0.3 }, { p: P.stepLadder, w: 1 }, { p: P.fakeDoor, w: 1.2, min: 0.45 }, { p: P.tvStatic, w: 1, min: 0.65 },
+        { p: M.box, w: 3 }, { p: M.box2, w: 1.5 }, { p: M.cabinet, w: 1.5 }, { p: P.filingCabinet, w: 1.5 }, { p: P.waterCooler, w: 1 },
+        { p: M.extinguisher, w: 1 }, { p: M.bins, w: 1 }, { p: M.desk, w: 1 }, { p: M.ladder, w: 0.8 },
+        { p: P.mattress, w: 1, min: 0.3 }, { p: P.fakeDoor, w: 1.2, min: 0.45 }, { p: M.tv, w: 1, min: 0.5 }, { p: P.tvStatic, w: 1, min: 0.65 },
       ],
       high: [
-        { p: P.outlet, w: 3 }, { p: P.wallVent, w: 2 }, { p: P.wallClock, w: 1 }, { p: P.poster, w: 1, min: 0.3 },
+        { p: P.outlet, w: 3 }, { p: P.wallVent, w: 2 }, { p: M.alarm, w: 1 }, { p: P.wallClock, w: 1 }, { p: P.poster, w: 1, min: 0.3 },
         { p: P.painting, w: 1, min: 0.55 }, { p: P.handprints, w: 1.5, min: 0.8 },
       ],
-      floor: [{ p: P.officeChair, w: 3 }, { p: P.wetFloorSign, w: 1 }, { p: P.chairPile, w: 1.2, min: 0.6 }],
+      floor: [{ p: P.officeChair, w: 2 }, { p: M.chair, w: 2 }, { p: M.sign, w: 1 }, { p: P.chairPile, w: 1.2, min: 0.6 }, { p: M.chairTipped, w: 1, min: 0.5 }],
       clutter: [
-        { p: P.paperScatter, w: 3 }, { p: P.bottles, w: 2 }, { p: P.trafficCone, w: 1 }, { p: P.crtMonitor, w: 1, min: 0.2 }, { p: P.puddle, w: 2 },
+        { p: P.paperScatter, w: 3 }, { p: P.bottles, w: 2 }, { p: P.trafficCone, w: 1 }, { p: M.tv, w: 0.8, min: 0.2 }, { p: P.puddle, w: 2 },
+        { p: M.box, w: 1.5 },
       ],
       ceil: [{ p: P.missingTile, w: 2 }, { p: P.hangingWires, w: 1, min: 0.35 }, { p: P.upsideChair, w: 0.6, min: 0.9 }],
     });
