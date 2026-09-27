@@ -11,7 +11,7 @@ import { signTexture } from '../props/canvas.js';
 import { Watcher, Follower, Peeker, Mannequin, StrayCat, seen } from '../entities/creatures.js';
 import { LOOKS } from '../entities/looks.js';
 import { applyPose, lookAt } from '../entities/figures.js';
-import { NPC } from '../entities/npc.js';
+import { NPC, strayNPC } from '../entities/npc.js';
 
 // LEVEL 94: a dead 90s shopping mall. A two-storey atrium under skylights,
 // shopfronts on both sides (most of them shuttered), stopped escalators, a dry
@@ -1922,6 +1922,31 @@ export default {
         }
       }
     };
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'mall',
+    looks: ['guard'],
+    surfaces: () => ({
+      wall: { mat: photo('beige_wall_001', { uvScale: 3, color: new THREE.Color(1.12, 1.1, 1.04) }), uv: 3 },
+      floor: { mat: photo('terrazzo_tiles', { uvScale: 2, roughness: 0.55, color: new THREE.Color(1.08, 1.04, 0.98) }), uv: 2 },
+      ceil: { mat: pbr(ceilingTile(), { normalScale: 0.8, color: new THREE.Color(1.08, 1.08, 1.08) }), uv: 1.2 },
+    }),
+    props: {
+      wall: [{ p: clothesRack, w: 1 }, { p: wallShelf, w: 1 }],
+      floor: [{ p: cart, w: 2 }, { p: P.wetFloorSign, w: 1 }],
+      clutter: [{ p: P.paperScatter, w: 1 }],
+    },
+    stray: (world, pos) => strayNPC(world, pos, {
+      name: 'the security guard',
+      model: LOOKS.guard(),
+      voice: 0.85,
+      lines: [
+        ['Excuse me. This is not the mall.', '...I should know. I’ve looked everywhere.'],
+        ['If you find the food court, save me a pretzel.'],
+      ],
+    }),
   },
 
   makeDoor(world, dest) {

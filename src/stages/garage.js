@@ -12,7 +12,7 @@ import { exitSign, glowSprite } from '../core/textures.js';
 import { Watcher, Follower, Peeker, StrayCat, seen } from '../entities/creatures.js';
 import { LOOKS, carModel } from '../entities/looks.js';
 import { idlePose, lookAt, beastPose, tailSway, updateProbe, POSES } from '../entities/figures.js';
-import { NPC } from '../entities/npc.js';
+import { NPC, strayNPC } from '../entities/npc.js';
 
 // Parking Level P6: an underground multi-storey car park at 3 a.m. Split
 // decks joined by long ramps, a pillar every three bays, sodium lamps, and
@@ -2084,6 +2084,32 @@ export default {
       tipLamp.material.color.setRGB(2, 0.2, 0.1).multiplyScalar(armUp ? 0.2 : 0.6 + 0.4 * Math.sin(ctx.t * 4));
     };
     world.onDispose.push(() => gatePanner?.disconnect());
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'garage',
+    looks: ['valet'],
+    surfaces: () => ({
+      wall: { mat: photo('concrete_wall_004', { uvScale: 2, color: 0xb4ada2 }), uv: 2 },
+      floor: { mat: photo('garage_floor', { uvScale: 2, color: 0xa29c92, roughness: 0.9 }), uv: 2 },
+      ceil: { mat: photo('concrete_wall_004', { uvScale: 2, color: 0x8c877e, normalScale: 0.7 }), uv: 2 },
+    }),
+    props: {
+      wall: [{ p: tyreStack, w: 1 }, { p: hoseBox, w: 0.5 }],
+      high: [{ p: missingPoster, w: 1 }],
+      floor: [{ p: P.trafficCone, w: 2 }],
+      clutter: [{ p: trolley, w: 1 }, { p: P.trafficCone, w: 2 }, { p: P.puddle, w: 1 }],
+    },
+    stray: (world, pos) => strayNPC(world, pos, {
+      name: 'the attendant',
+      model: LOOKS.valet(),
+      voice: 1,
+      lines: [
+        ['Has anyone seen where I parked this level?'],
+        ['It was right here. Big grey thing. Pillars. Smelled of petrol.', '...This isn’t it, is it.'],
+      ],
+    }),
   },
 
   makeDoor(world, dest) {
