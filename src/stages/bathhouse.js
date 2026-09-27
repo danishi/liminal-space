@@ -842,7 +842,6 @@ const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
-const _up = new THREE.Vector3(0, 1, 0);
 
 /** Vertical/horizontal quads with world UVs, tagged for the light baker. */
 class Quads {
@@ -977,6 +976,20 @@ function kerorinParts() {
   }
   return bucketParts;
 }
+
+/** A Kerorin bucket as a decorate() prop, for when the bathhouse bleeds elsewhere. */
+const bleedBucket = {
+  place: 'clutter', fp: null,
+  build() {
+    const g = new THREE.Group();
+    for (const p of kerorinParts()) {
+      const m = new THREE.Mesh(p.geo, p.mat);
+      m.applyMatrix4(p.m);
+      g.add(m);
+    }
+    return g;
+  },
+};
 
 let stoolParts = null;
 /** A low plastic bath stool (the scanned wooden stool is used for the nicer ones). */
@@ -1449,7 +1462,6 @@ export default {
     const g = (world.grid = new Grid(W, H, 1, WALL));
     const N = W * H;
     const zone = new Uint8Array(N);
-    const side = new Int8Array(N).fill(-1);
     const modAt = new Int8Array(N).fill(-1);
     const lowTop = new Float32Array(N);
     const bathKind = new Uint8Array(N); // 1 hot, 2 herbal, 3 open-air
@@ -1476,13 +1488,12 @@ export default {
     };
 
     for (const m of mods) {
-      const set = (li, lj, type, h, z, s = -1) => {
+      const set = (li, lj, type, h, z) => {
         const [i, j] = cellL(m, li, lj);
         g.set(i, j, type);
         g.setHeight(i, j, h);
         const k = K(i, j);
         zone[k] = z;
-        side[k] = s;
         modAt[k] = m.idx;
       };
       for (let lj = 1; lj <= 3; lj++) for (let li = 4; li <= 12; li++) set(li, lj, FLOOR, Y_GENKAN, Z_GENKAN);
@@ -1599,7 +1610,6 @@ export default {
         g.set(i, j, DOORWAY);
         g.setHeight(i, j, 0);
         zone[K(i, j)] = lj < 5 ? Z_GENKAN : Z_BATH;
-        side[K(i, j)] = lj < 5 ? -1 : li ? 1 : 0;
         if (!m.doors) m.doors = [];
         m.doors.push({ li, lj, i, j });
       }
@@ -1617,7 +1627,6 @@ export default {
       m.name = m === spawnMod ? NAMES[0] : NAMES[Math.min(NAMES.length - 1, Math.floor(m.u * 5 + rng.float(0, 1.5)))];
       m.variant = m.u < 0.3 ? 'classic' : m.u < 0.5 ? rng.pick(['classic', 'two']) : m.u < 0.7 ? rng.pick(['two', 'flood']) : m.u < 0.9 ? rng.pick(['flood', 'upside']) : rng.pick(['upside', 'figure']);
       if (m === spawnMod) m.variant = 'classic';
-      if (window.__bathVariants) m.variant = window.__bathVariants[m.idx]; // DEBUG
     }
     // deep ends: some baths go down further than the building does
     const deep = new Set();
@@ -2683,15 +2692,15 @@ export default {
     // deeper in, a capybara cools off on a changing-room bench with a towel on its head
     if (world.depth >= 2) {
       const m = rng.pick(mods.filter((x) => x !== spawnMod));
-      const p = at(m, 0, 4.2, 9.35, PI / 2 + PI);
+      const p = at(m, 0, 4.2, 9.35, PI / 2);
       const fig = LOOKS.capybara();
       beastPose(fig, 'sit');
       fig.scale.setScalar(1.1);
       if (fig.userData.yuzu) fig.userData.yuzu.visible = false;
-      const towel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.035, 0.14), new THREE.MeshStandardMaterial({ color: 0xf4f2ec, roughness: 1 }));
-      towel.position.set(0, 0.2 * 0.72 + 0.02, 0.01);
+      const towel = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.16), new THREE.MeshStandardMaterial({ color: 0xf4f2ec, roughness: 1 }));
+      towel.position.copy(fig.userData.yuzu ? fig.userData.yuzu.position : new THREE.Vector3(0, 0.18, 0));
       fig.userData.rig.bones.head.add(towel);
-      fig.position.set(p.x, Y_WOOD + modelSize('painted_wooden_bench').y * 0.8, p.z);
+      fig.position.set(p.x, Y_WOOD + 0.42, p.z);
       fig.rotation.y = p.yaw;
       const bc = new NPC(world, { name: 'the capybara', pos: fig.position.clone(), model: fig, voice: 0.5, radius: 0, face: false, prompt: 'Sit with the capybara', conversations: [['(It is cooling down after its bath. It has earned this.)'], ['(It has a towel folded on its head. You feel underdressed.)'], ['(It is waiting for the milk fridge to be restocked. It has been waiting a long time. It does not mind.)']] });
       bc.aimHeight = 0.4;
@@ -3042,6 +3051,35 @@ export default {
       flashlight: false,
       bake: { fixtureScale: 0.3, bounce: 0.5, hemi: 0.5, dynamic: 0.45, radius: 8, tess: 0.8 },
     });
+  },
+
+  // what leaks through when this level bleeds into another (see game/bleed.js)
+  bleed: {
+    ambience: 'bath',
+    looks: ['capybara'],
+    surfaces: () => {
+      const mosaic = (key, rgb, uv, opts = {}) => {
+        const map = glazeTexture(key, rgb).clone();
+        map.repeat.set(uv / 2, uv / 2);
+        map.userData.cached = true;
+        return { mat: photo('square_tiled_wall', { uvScale: uv, map, roughness: 0.3, ...opts }), uv };
+      };
+      return { wall: mosaic('wall', [226, 236, 236], 0.8, { roughness: 0.22 }), floor: mosaic('floor', [178, 198, 204], 0.55, { roughness: 0.45 }) };
+    },
+    props: {
+      clutter: [{ p: bleedBucket, w: 3 }],
+    },
+    stray: (world, pos) => {
+      const fig = LOOKS.capybara();
+      beastPose(fig, 'loaf');
+      fig.position.copy(pos);
+      const capy = new NPC(world, { name: 'the capybara', pos, model: fig, voice: 0.5, radius: 0.45, face: false, prompt: 'Sit with the capybara', conversations: [
+        ['(A capybara, damp, somewhere it should not be. It seems fine with it.)'],
+        ['(It is waiting for the bath to come back. It has all the time there is.)'],
+      ] });
+      capy.aimHeight = 0.4;
+      return capy;
+    },
   },
 
   makeDoor(world, dest) {
