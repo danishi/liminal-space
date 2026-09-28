@@ -42,8 +42,7 @@ function loadTex(url, srgb) {
       t.anisotropy = aniso;
       t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
       t.userData.cached = true;
-      // decode off the main thread now rather than at the first upload
-      Promise.resolve(t.image?.decode?.()).catch(() => {}).then(() => resolve(t));
+      resolve(t);
     }, undefined, reject);
   });
 }
