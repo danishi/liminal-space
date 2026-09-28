@@ -131,8 +131,9 @@ export class PropKit {
       });
       if (live.length) {
         // keep the live meshes in their group; strip merged ones
+        const liveSet = new Set(live);
         g.traverse((o) => {
-          if (o.isMesh && !live.includes(o)) o.visible = false;
+          if (o.isMesh && !liveSet.has(o)) o.visible = false;
         });
         const holder = new THREE.Group();
         for (const m of live) {
@@ -161,30 +162,57 @@ export class PropKit {
   }
 }
 
+// float copies of quantized model geometry, made once per source geometry
+const floatCache = new WeakMap();
+
 /**
  * Copy of a geometry with only float position/normal/uv (models use
  * quantized attributes, which can't be transformed or merged as-is).
  */
 function toFloatGeometry(src) {
+  let arrays = floatCache.get(src);
+  if (!arrays) {
+    arrays = floatArrays(src);
+    // plain float geometry is copied every time; quantized models are worth keeping
+    if (arrays.quantized) floatCache.set(src, arrays);
+  }
   const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(arrays.position.slice(), 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(arrays.normal.slice(), 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(arrays.uv.slice(), 2));
+  out.setIndex(new THREE.BufferAttribute(arrays.index.slice(), 1));
+  if (src.groups.length) for (const gr of src.groups) out.addGroup(gr.start, gr.count, gr.materialIndex);
+  return out;
+}
+
+function floatArrays(src) {
   const count = src.attributes.position.count;
+  const out = { quantized: false };
   for (const [name, size] of [['position', 3], ['normal', 3], ['uv', 2]]) {
     const a = src.attributes[name];
-    const arr = new Float32Array(count * size);
-    if (a) {
-      for (let i = 0; i < count; i++) {
-        arr[i * size] = a.getX(i);
-        arr[i * size + 1] = a.getY(i);
-        if (size === 3) arr[i * size + 2] = a.getZ(i);
+    let arr;
+    if (a && !a.isInterleavedBufferAttribute && !a.normalized && a.array instanceof Float32Array && a.itemSize === size && a.array.length === count * size) {
+      arr = a.array;
+    } else {
+      arr = new Float32Array(count * size);
+      if (a) {
+        out.quantized = true;
+        for (let i = 0; i < count; i++) {
+          arr[i * size] = a.getX(i);
+          arr[i * size + 1] = a.getY(i);
+          if (size === 3) arr[i * size + 2] = a.getZ(i);
+        }
+      } else if (name === 'normal') {
+        for (let i = 0; i < count; i++) arr[i * 3 + 1] = 1;
       }
-    } else if (name === 'normal') {
-      for (let i = 0; i < count; i++) arr[i * 3 + 1] = 1;
     }
-    out.setAttribute(name, new THREE.BufferAttribute(arr, size));
+    out[name] = arr;
   }
-  if (src.index) out.setIndex(Array.from(src.index.array));
-  else out.setIndex([...Array(count).keys()]);
-  if (src.groups.length) for (const gr of src.groups) out.addGroup(gr.start, gr.count, gr.materialIndex);
+  if (src.index) out.index = Uint32Array.from(src.index.array);
+  else {
+    out.index = new Uint32Array(count);
+    for (let i = 0; i < count; i++) out.index[i] = i;
+  }
   return out;
 }
 

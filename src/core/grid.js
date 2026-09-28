@@ -243,10 +243,10 @@ export class Grid {
     const len = Math.hypot(dx, dz);
     const step = this.cs * 0.2;
     const n = Math.ceil(len / step);
+    const cs = this.cs;
     for (let s = 1; s < n; s++) {
       const t = s / n;
-      const [i, j] = this.cellOf(x0 + dx * t, z0 + dz * t);
-      if (this.solid(i, j)) return false;
+      if (this.solid(Math.floor((x0 + dx * t) / cs), Math.floor((z0 + dz * t) / cs))) return false;
     }
     return true;
   }
@@ -254,8 +254,10 @@ export class Grid {
   /** Free distance from a point along a direction (walls only), capped. */
   probe(x, z, dirX, dirZ, max = 8) {
     const step = this.cs * 0.25;
+    const cs = this.cs;
     for (let d = step; d <= max; d += step) {
-      const [i, j] = this.cellOf(x + dirX * d, z + dirZ * d);
+      const i = Math.floor((x + dirX * d) / cs);
+      const j = Math.floor((z + dirZ * d) / cs);
       if (this.solid(i, j) || this.get(i, j) === HOLE) return d - step;
     }
     return max;
