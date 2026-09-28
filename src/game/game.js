@@ -444,8 +444,9 @@ export class Game {
     if (wasPaused && this.state === 'paused' && this.input.pressed('pause') && this.ui.current === 'pause') this.resume();
 
     if (this.world) {
-      // a light that is off casts nothing: don't redraw its shadow map
-      this.flashlight.shadow.autoUpdate = this.flashlight.intensity > 0;
+      // a light that is off casts nothing: don't redraw its shadow map (but make
+      // sure it exists, or shading samples an unbound shadow texture)
+      this.flashlight.shadow.autoUpdate = this.flashlight.intensity > 0 || !this.flashlight.shadow.map;
       this.audio.updateListener(this.camera);
       this.audio.update(dt);
       this.flash = Math.max(0, this.flash - dt * 1.5);
