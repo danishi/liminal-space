@@ -21,11 +21,6 @@ function kitsuneModel() {
 }
 
 export default {
-  id: 'shrine',
-  code: 'LEVEL 1000',
-  name: 'Thousand Gates',
-  sub: '千本鳥居 · A shrine path in Japan at night',
-  tint: 0xff8a50,
   assets: {
     textures: ['bamboo_wall', 'stone_pathway_02', 'clean_pebbles', 'brown_planks_03'],
     models: ['wooden_lantern_01', 'rock_moss_set_01', 'fern_02', 'wooden_bucket_01'],

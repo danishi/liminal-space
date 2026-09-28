@@ -26,11 +26,6 @@ import { residents } from './residents.js';
 // and adds what later phases use.
 
 export default {
-  id: 'garage',
-  code: 'LEVEL 6',
-  name: 'Parking Level P6',
-  sub: 'P6 of P∞',
-  tint: 0xffb060,
   assets: {
     textures: ['garage_floor', 'concrete_wall_004', 'painted_metal_shutter'],
     models: ['covered_car', 'concrete_road_barrier', 'old_tyre', 'hand_truck', 'metal_jerrycan', 'power_box_01', 'metal_trash_can', 'WetFloorSign_01', 'security_camera_01', 'utility_box_01', 'trashbag', 'cardboard_box_01', 'metal_office_desk', 'plastic_monobloc_chair_01', 'korean_fire_extinguisher_01'],

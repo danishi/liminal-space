@@ -4,12 +4,12 @@ import { AudioEngine } from '../core/audio.js';
 import { Input } from '../core/input.js';
 import { setMaxAnisotropy } from '../core/textures.js';
 import { setSurfaceAnisotropy } from '../core/surfaces.js';
-import { preload, setAssetAnisotropy } from '../core/assets.js';
+import { preload, prefetch, setAssetAnisotropy } from '../core/assets.js';
 import { prewarm } from '../entities/looks.js';
 import { pickBleed } from './bleed.js';
 import { Player } from './player.js';
 import { World } from './world.js';
-import { STAGES } from '../stages/index.js';
+import { STAGES, loadStage } from '../stages/index.js';
 
 const QUALITY = {
   low: { pr: 0.75, bloom: false, lights: 4, shadows: false, ao: false, env: 128, probeFollow: false, msaa: 0 },
@@ -214,8 +214,9 @@ export class Game {
     this.state = 'title';
     this.input.enabled = false;
     const index = this.randomStage();
-    await preload(STAGES[index].assets);
-    await prewarm(STAGES[index].assets?.looks);
+    const stage = await loadStage(index);
+    await preload(stage.assets);
+    await prewarm(stage.assets?.looks);
     this.buildWorld(index, { attract: true, seed: (Math.random() * 1e6) | 0 });
     this.ui.show('title');
     this.ui.hud(false);
@@ -251,15 +252,17 @@ export class Game {
     if (how !== 'start') this.audio.driftSound(how === 'fall' ? 'fall' : 'door');
     await this.ui.fadeOut(how === 'fall' || how === 'time');
     if (how !== 'start') this.depth++;
-    const index = dest ?? this.randomStage(this.stageIndex);
+    const index = dest ?? this.nextStage ?? this.randomStage(this.stageIndex);
     // levels you've been through may leak into this one
     const bleed = opts.bleed ?? (how === 'start' ? [] : pickBleed(this.history, index, this.depth));
     for (const i of [index, ...bleed]) {
-      await preload(STAGES[i].assets);
-      await prewarm(i === index ? STAGES[i].assets?.looks : STAGES[i].bleed?.looks);
+      const stage = await loadStage(i);
+      await preload(stage.assets);
+      await prewarm(i === index ? stage.assets?.looks : stage.bleed?.looks);
     }
     this.buildWorld(index, { bleed });
     this.history.push(index);
+    this.prefetchAhead();
     this.startAmbience();
     this.ui.show(null);
     this.ui.hud(true, this.world, this.depth);
@@ -272,6 +275,16 @@ export class Game {
     if (how === 'fall') this.toast('You fell a long way down', null, 'danger');
     await this.ui.fadeIn();
     this.drifting = false;
+  }
+
+  /**
+   * Picks where the signal will drop you when it fades (same odds as picking
+   * then) and starts downloading that level and the ones behind the doors.
+   */
+  prefetchAhead() {
+    this.nextStage = this.randomStage(this.stageIndex);
+    const ahead = new Set([this.nextStage, ...this.world.doors.map((d) => d.dest)]);
+    for (const i of ahead) loadStage(i).then((s) => prefetch(s.assets)).catch(() => {});
   }
 
   pause() {

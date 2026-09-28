@@ -67,11 +67,6 @@ function elevatorFrame(kit, open = true) {
 }
 
 export default {
-  id: 'hotel',
-  code: 'LEVEL 11',
-  name: 'The Night Hotel',
-  sub: 'Red carpet, no guests',
-  tint: 0xffc080,
   assets: {
     textures: ['dark_paneled_wood', 'decrepit_wallpaper', 'dirty_carpet', 'ceiling_interior'],
     models: ['ArmChair_01', 'Sofa_01', 'CoffeeCart_01', 'Chandelier_02', 'ClassicNightstand_01', 'fancy_picture_frame_01', 'ornate_mirror_01', 'vintage_grandfather_clock_01', 'antique_ceramic_vase_01', 'vintage_suitcase'],

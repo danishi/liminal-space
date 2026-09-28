@@ -23,11 +23,6 @@ import { apparitions } from './apparitions.js';
 // fountain in a sunken court, a food court, and the corridors behind it all.
 
 export default {
-  id: 'mall',
-  code: 'LEVEL 94',
-  name: 'The Dead Mall',
-  sub: 'Muzak for no one',
-  tint: 0xffe6c8,
   assets: {
     textures: ['terrazzo_tiles', 'beige_wall_001', 'painted_metal_shutter', 'old_wooden_floor_02', 'concrete_floor_02', 'concrete_wall_004', 'linoleum_brown', 'square_tiled_wall', 'blue_floor_tiles_01'],
     models: [

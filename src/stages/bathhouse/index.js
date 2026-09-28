@@ -25,11 +25,6 @@ import { mood } from './mood.js';
 // wander from where you came in, the less the bathhouses agree with each other.
 
 export default {
-  id: 'bathhouse',
-  code: 'LEVEL 26',
-  name: 'Midnight Bathhouse',
-  sub: '深夜の銭湯 · Open late. Very late.',
-  tint: 0x9ad8ff,
   assets: {
     textures: ['blue_floor_tiles_01', 'square_tiled_wall', 'old_wooden_floor_02', 'terrazzo_tiles', 'beige_wall_001', 'dark_paneled_wood', 'brown_planks_03', 'concrete_floor_02', 'concrete_wall_004', 'bamboo_wall', 'stone_pathway_02'],
     models: ['wooden_stool_01', 'wicker_basket_01', 'ceiling_fan', 'painted_wooden_bench', 'wall_clock', 'potted_plant_04', 'rock_moss_set_01', 'wooden_bucket_02', 'metal_trash_can', 'utility_box_01', 'trashbag', 'rubber_duck_toy'],

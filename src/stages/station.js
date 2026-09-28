@@ -52,11 +52,6 @@ const pillar = {
 };
 
 export default {
-  id: 'station',
-  code: 'LEVEL 8',
-  name: 'Last-Train Underpass',
-  sub: '終電後の地下通路 · A station in Japan after the last train',
-  tint: 0xe8fff0,
   assets: {
     textures: ['long_white_tiles', 'concrete_floor_02', 'gravel'],
     models: ['korean_public_payphone_01', 'security_camera_01', 'utility_box_01', 'trashbag', 'vintage_suitcase', 'metal_trash_can', 'WetFloorSign_01'],
