@@ -165,8 +165,33 @@ export class Game {
     this.fear = 0;
     this.staticLevel = 0;
     this.warnedSignal = false;
-    this.renderer.compile(this.scene, this.camera);
     return world;
+  }
+
+  /**
+   * Compiles the level's shaders before the first frame, including those of
+   * apparitions that start hidden (or they would stall the frame they appear).
+   * Programs are built for the post-processing buffer the scene really renders
+   * into, and in parallel where the browser supports it.
+   */
+  async warmShaders() {
+    const world = this.world;
+    const hidden = [];
+    for (const e of world.entities) {
+      e.object?.traverse((o) => {
+        if (!o.visible) {
+          o.visible = true;
+          hidden.push(o);
+        }
+      });
+    }
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(this.post.composer.readBuffer);
+    const done = r.compileAsync(this.scene, this.camera);
+    r.setRenderTarget(prev);
+    for (const o of hidden) o.visible = false;
+    await done;
   }
 
   /** Renders the level around the spawn point into a reflection probe. */
@@ -218,6 +243,7 @@ export class Game {
     await preload(stage.assets);
     await prewarm(stage.assets?.looks);
     this.buildWorld(index, { attract: true, seed: (Math.random() * 1e6) | 0 });
+    await this.warmShaders();
     this.ui.show('title');
     this.ui.hud(false);
     if (this.audio.ready) this.startAmbience();
@@ -251,6 +277,8 @@ export class Game {
     this.state = 'drifting';
     if (how !== 'start') this.audio.driftSound(how === 'fall' ? 'fall' : 'door');
     await this.ui.fadeOut(how === 'fall' || how === 'time');
+    // the screen is black now: stop drawing the old level while the next one loads
+    this.loading = true;
     if (how !== 'start') this.depth++;
     const index = dest ?? this.nextStage ?? this.randomStage(this.stageIndex);
     // levels you've been through may leak into this one
@@ -261,6 +289,8 @@ export class Game {
       await prewarm(i === index ? stage.assets?.looks : stage.bleed?.looks);
     }
     this.buildWorld(index, { bleed });
+    await this.warmShaders();
+    this.loading = false;
     this.history.push(index);
     this.prefetchAhead();
     this.startAmbience();
@@ -315,7 +345,9 @@ export class Game {
     this.audio.setDucked(false);
     this.audio.setFear(0);
     await this.ui.fadeOut();
+    this.loading = true;
     await this.showTitle();
+    this.loading = false;
     await this.ui.fadeIn();
   }
 
@@ -361,8 +393,23 @@ export class Game {
     const now = performance.now();
     const dt = Math.min(0.05, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
-    this.time += dt;
     this.input.pollGamepad(dt);
+    this.frame(dt);
+    this.fpsAcc.t += dt;
+    this.fpsAcc.n++;
+    if (this.fpsAcc.t > 0.5) {
+      this.ui.fps(this.fpsAcc.n / this.fpsAcc.t);
+      this.fpsAcc.t = 0;
+      this.fpsAcc.n = 0;
+    }
+    this.input.endFrame();
+  }
+
+  /** One frame of simulation and rendering (also handy for driving the game headless). */
+  frame(dt) {
+    this.time += dt;
+    // the screen is black while a level loads: nothing to update or draw
+    if (this.loading) return;
     const wasPaused = this.state === 'paused';
 
     if (this.state === 'playing') this.updatePlay(dt);
@@ -378,15 +425,6 @@ export class Game {
       this.post.update(this.time, this.fear, { static: Math.max(this.staticLevel, this.staticPulse), desat: this.desat || 0, flash: this.flash, bleed: this.state === 'playing' ? this.world.bleedLevel : 0 });
       this.post.render(dt);
     }
-
-    this.fpsAcc.t += dt;
-    this.fpsAcc.n++;
-    if (this.fpsAcc.t > 0.5) {
-      this.ui.fps(this.fpsAcc.n / this.fpsAcc.t);
-      this.fpsAcc.t = 0;
-      this.fpsAcc.n = 0;
-    }
-    this.input.endFrame();
   }
 
   ctx(dt) {
