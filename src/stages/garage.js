@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { Grid, FLOOR, WALL, HOLE, VOID, DIRS, buildCellQuads, buildRisers, wallMounts } from '../core/grid.js';
+import { Grid, FLOOR, WALL, HOLE, VOID, DIRS, GeoBuilder, buildCellQuads, buildRisers, wallMounts } from '../core/grid.js';
 import { pbr, paint } from '../core/surfaces.js';
 import { mesh, buildShell, doorModel, decorate, glow } from './common.js';
 import { LightPool } from '../core/lights.js';
@@ -8,7 +8,8 @@ import { PropKit, keep } from '../props/kit.js';
 import { photo, modelSize } from '../core/assets.js';
 import * as P from '../props/library.js';
 import { signTexture, screenStatic } from '../props/canvas.js';
-import { exitSign, glowSprite } from '../core/textures.js';
+import { canvasTexture, exitSign, glowSprite } from '../core/textures.js';
+import { hash2 } from '../core/rng.js';
 import { Watcher, Follower, Peeker, StrayCat, seen } from '../entities/creatures.js';
 import { LOOKS, carModel } from '../entities/looks.js';
 import { idlePose, lookAt, beastPose, tailSway, updateProbe, POSES } from '../entities/figures.js';
@@ -46,27 +47,7 @@ const ZONE_COLORS = ['#c8322a', '#2a5cb0', '#2f8a4a', '#d9a51c', '#7a3d9a', '#d8
 // ---------------------------------------------------------------------------
 // Canvas paint (cached for the session)
 
-const TEX = new Map();
-function canvasTex(key, w, h, draw, { repeat = false } = {}) {
-  if (TEX.has(key)) return TEX.get(key);
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 8;
-  t.userData.cached = true;
-  TEX.set(key, t);
-  return t;
-}
-
-function hash2(x, y) {
-  let h = (x * 374761393 + y * 668265263) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
+const canvasTex = (key, w, h, draw, { repeat = false } = {}) => canvasTexture(key, w, h, draw, { repeat, anisotropy: 8 });
 
 /** Scuffs painted marks: tyres wear floor paint away in specks and patches. */
 function wear(ctx, w, h, amount = 0.25, seed = 1) {
@@ -321,44 +302,10 @@ function pipeGeo(r, len) {
   return new THREE.CylinderGeometry(r, r, len, 8, Math.max(1, Math.ceil(len / 1.5))).rotateZ(PI / 2);
 }
 
-/** Quads in the same layout as the grid builders, so the baker can tessellate them. */
-class Quads {
-  constructor() {
-    this.p = [];
-    this.n = [];
-    this.uv = [];
-    this.idx = [];
-  }
-
-  quad(pts, s, uvs = null) {
-    const base = this.p.length / 3;
-    const [a, b, , d] = pts;
-    const n = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).cross(new THREE.Vector3(d[0] - a[0], d[1] - a[1], d[2] - a[2])).normalize();
-    pts.forEach((q, k) => {
-      this.p.push(...q);
-      this.n.push(n.x, n.y, n.z);
-      if (uvs) this.uv.push(...uvs[k]);
-      else this.uv.push(q[0] / s, (n.y > 0 ? -q[2] : q[2]) / s);
-    });
-    this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-
-  build() {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    g.setIndex(this.idx);
-    g.computeBoundingSphere();
-    g.userData.quads = true;
-    return g;
-  }
-}
-
 /** Sloped floor and ceiling quads for the car ramps (the grid would draw them as steps). */
 function slopeGeos(g, cells, uv) {
-  const floor = new Quads();
-  const ceil = new Quads();
+  const floor = new GeoBuilder();
+  const ceil = new GeoBuilder();
   for (const [i, j] of cells) {
     const k = j * g.w + i;
     const [dx, dy] = DIRS[g.ramp[k] - 1];
@@ -370,15 +317,15 @@ function slopeGeos(g, cells, uv) {
     const x1 = x0 + CS;
     const z0 = j * CS;
     const z1 = z0 + CS;
-    floor.quad([[x0, hAt(0, 1), z1], [x1, hAt(1, 1), z1], [x1, hAt(1, 0), z0], [x0, hAt(0, 0), z0]], uv);
-    ceil.quad([[x0, hAt(0, 0) + H, z0], [x1, hAt(1, 0) + H, z0], [x1, hAt(1, 1) + H, z1], [x0, hAt(0, 1) + H, z1]], uv);
+    floor.quadPts([[x0, hAt(0, 1), z1], [x1, hAt(1, 1), z1], [x1, hAt(1, 0), z0], [x0, hAt(0, 0), z0]], uv);
+    ceil.quadPts([[x0, hAt(0, 0) + H, z0], [x1, hAt(1, 0) + H, z0], [x1, hAt(1, 1) + H, z1], [x0, hAt(0, 1) + H, z1]], uv);
   }
   return [floor.build(), ceil.build()];
 }
 
 /** Painted hazard curbs along the walls of the car ramps (they follow the slope). */
 function curbGeo(g, cells) {
-  const q = new Quads();
+  const q = new GeoBuilder();
   const s = 0.7;
   const hgt = 0.32;
   for (const [i, j] of cells) {
@@ -394,11 +341,11 @@ function curbGeo(g, cells) {
     const uv = (z, y) => [z / s, (y - h0) / s];
     if (g.get(i - 1, j) === WALL) {
       const x = i * CS + 0.012;
-      q.quad([[x, h1, z1], [x, h0, z0], [x, h0 + hgt, z0], [x, h1 + hgt, z1]], s, [uv(z1, h1), uv(z0, h0), uv(z0, h0 + hgt), uv(z1, h1 + hgt)]);
+      q.quadPts([[x, h1, z1], [x, h0, z0], [x, h0 + hgt, z0], [x, h1 + hgt, z1]], s, [uv(z1, h1), uv(z0, h0), uv(z0, h0 + hgt), uv(z1, h1 + hgt)]);
     }
     if (g.get(i + 1, j) === WALL) {
       const x = (i + 1) * CS - 0.012;
-      q.quad([[x, h0, z0], [x, h1, z1], [x, h1 + hgt, z1], [x, h0 + hgt, z0]], s, [uv(z0, h0), uv(z1, h1), uv(z1, h1 + hgt), uv(z0, h0 + hgt)]);
+      q.quadPts([[x, h0, z0], [x, h1, z1], [x, h1 + hgt, z1], [x, h0 + hgt, z0]], s, [uv(z0, h0), uv(z1, h1), uv(z1, h1 + hgt), uv(z0, h0 + hgt)]);
     }
   }
   return q.build();
@@ -895,22 +842,11 @@ class Creeper {
     const audio = game.audio;
     if (!this.engine && audio.ready) {
       // a low idle, like an engine left running
-      const a = audio.ctx;
       this.panner = audio.panner(0, 0, 0, { ref: 4, rolloff: 1.1 });
-      const osc = a.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.value = 33;
-      const f = a.createBiquadFilter();
-      f.type = 'lowpass';
-      f.frequency.value = 150;
-      const gn = a.createGain();
-      gn.gain.value = 0;
-      osc.connect(f).connect(gn).connect(this.panner);
-      osc.start();
-      this.engine = { osc, gn, a };
+      this.engine = audio.hum(this.panner, { freq: 33, cut: 150 });
     }
     if (this.state === 'hidden') {
-      if (this.engine) this.engine.gn.gain.setTargetAtTime(0, this.engine.a.currentTime, 0.3);
+      if (this.engine) this.engine.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.3);
       if (w.uneaseAt(player.pos.x, player.pos.z) < 0.7) return;
       this.timer -= dt;
       if (this.timer <= 0 && !this.appear(ctx)) this.timer = 3;
@@ -976,8 +912,8 @@ class Creeper {
     }
     if (this.engine) {
       audio.setPannerPos(this.panner, p.x, p.y + 0.5, p.z);
-      this.engine.gn.gain.setTargetAtTime(this.state === 'creep' ? 0.05 + this.speed * 0.02 : 0, this.engine.a.currentTime, 0.4);
-      this.engine.osc.frequency.setTargetAtTime(33 + this.speed * 6, this.engine.a.currentTime, 0.4);
+      this.engine.gain.setTargetAtTime(this.state === 'creep' ? 0.05 + this.speed * 0.02 : 0, audio.ctx.currentTime, 0.4);
+      this.engine.freq.setTargetAtTime(33 + this.speed * 6, audio.ctx.currentTime, 0.4);
     }
   }
 
@@ -1005,7 +941,7 @@ class Creeper {
 
   dispose() {
     if (this.engine) {
-      this.engine.osc.stop();
+      this.engine.stop();
       this.engine.osc.disconnect();
     }
     this.panner?.disconnect();

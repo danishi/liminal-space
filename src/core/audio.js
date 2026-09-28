@@ -424,6 +424,36 @@ export class AudioEngine {
     };
   }
 
+  /**
+   * Continuous filtered drone into `dest` (a panner): fridges, massage chairs,
+   * an idling engine. Returns { osc, gain, freq, stop }.
+   */
+  hum(dest, { freq = 60, type = 'sawtooth', cut = 240, gain = 0 } = {}) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator();
+    o.type = type;
+    o.frequency.value = freq;
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cut;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    o.connect(f).connect(g).connect(dest);
+    o.start();
+    return {
+      osc: o,
+      gain: g.gain,
+      freq: o.frequency,
+      stop() {
+        try {
+          o.stop();
+        } catch {
+          /* already stopped */
+        }
+      },
+    };
+  }
+
   phoneRing(p) {
     if (!this.ready) return;
     const t = this.now;

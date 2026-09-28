@@ -1,8 +1,45 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildWallFaces, buildFloors, buildCellQuads, buildRisers, buildStairs, wallMounts, WALL, VOID, HOLE, WATER, DIRS, PIT_DEPTH } from '../core/grid.js';
+import { buildWallFaces, buildFloors, buildCellQuads, buildRisers, buildStairs, wallMounts, FLOOR, WALL, VOID, HOLE, WATER, DIRS, PIT_DEPTH } from '../core/grid.js';
 import { LightPool } from '../core/lights.js';
 import { glowSprite } from '../core/textures.js';
+
+/**
+ * Carves a maze from (1, 1) through a grid of walls (depth-first), then knocks
+ * through some dead ends with probability `braid` so it has loops.
+ */
+export function carveMaze(g, rng, braid = 0.5) {
+  const stack = [[1, 1]];
+  g.set(1, 1, FLOOR);
+  while (stack.length) {
+    const [i, j] = stack[stack.length - 1];
+    const nb = [[2, 0], [-2, 0], [0, 2], [0, -2]]
+      .map(([dx, dy]) => [i + dx, j + dy, dx, dy])
+      .filter(([x, y]) => x > 0 && y > 0 && x < g.w - 1 && y < g.h - 1 && g.get(x, y) === WALL);
+    if (!nb.length) {
+      stack.pop();
+      continue;
+    }
+    const [x, y, dx, dy] = rng.pick(nb);
+    g.set(i + dx / 2, j + dy / 2, FLOOR);
+    g.set(x, y, FLOOR);
+    stack.push([x, y]);
+  }
+  for (let j = 1; j < g.h - 1; j += 2) {
+    for (let i = 1; i < g.w - 1; i += 2) {
+      if (g.countSolidNeighbors(i, j) < 3 || !rng.chance(braid)) continue;
+      const opts = DIRS.filter(([dx, dy]) => {
+        const wi = i + dx;
+        const wj = j + dy;
+        return g.get(wi, wj) === WALL && wi > 0 && wj > 0 && wi < g.w - 1 && wj < g.h - 1;
+      });
+      if (opts.length) {
+        const [dx, dy] = rng.pick(opts);
+        g.set(i + dx, j + dy, FLOOR);
+      }
+    }
+  }
+}
 
 export function mesh(world, geo, mat, { cast = false, receive = true } = {}) {
   const m = new THREE.Mesh(geo, mat);

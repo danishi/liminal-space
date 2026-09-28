@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { Grid, FLOOR, WALL, WATER, DOORWAY, VOID, HOLE, DIRS, PIT_DEPTH, buildWallFaces, buildCellQuads, buildFloors, buildStairs } from '../core/grid.js';
+import { Grid, FLOOR, WALL, WATER, DOORWAY, VOID, HOLE, DIRS, PIT_DEPTH, SIDES, GeoBuilder, buildWallFaces, buildCellQuads, buildFloors, buildStairs } from '../core/grid.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { waterNormalMap, paint, pbr, woodPanel } from '../core/surfaces.js';
-import { caustics } from '../core/textures.js';
+import { canvasTexture, caustics } from '../core/textures.js';
+import { rngFn as rng32 } from '../core/rng.js';
 import { mesh } from './common.js';
 import { LightPool } from '../core/lights.js';
 import { PropKit, keep } from '../props/kit.js';
@@ -63,31 +64,7 @@ const NAMES = ['富士の湯', '富士の湯', '富士の湯', '冨士の湯', '
 // ---------------------------------------------------------------------------
 // Canvas painting
 
-const texCache = new Map();
-function canvasTex(key, w, h, draw, { repeat = false } = {}) {
-  if (texCache.has(key)) return texCache.get(key);
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 8;
-  t.userData.cached = true;
-  texCache.set(key, t);
-  return t;
-}
-
-function rng32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const canvasTex = (key, w, h, draw, { repeat = false } = {}) => canvasTexture(key, w, h, draw, { repeat, anisotropy: 8 });
 
 const JP = '"Zen Kaku Gothic New", "IBM Plex Sans", "Hiragino Sans", "IPAGothic", sans-serif';
 const SERIF = '"Hiragino Mincho ProN", "Yu Mincho", "IPAMincho", "Noto Serif JP", serif';
@@ -843,56 +820,6 @@ const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
 
-/** Vertical/horizontal quads with world UVs, tagged for the light baker. */
-class Quads {
-  constructor() {
-    this.p = [];
-    this.n = [];
-    this.u = [];
-    this.i = [];
-  }
-
-  quad(a, b, c, d, n, ua, ub, uc, ud) {
-    const base = this.p.length / 3;
-    this.p.push(...a, ...b, ...c, ...d);
-    for (let k = 0; k < 4; k++) this.n.push(...n);
-    this.u.push(...ua, ...ub, ...uc, ...ud);
-    this.i.push(base, base + 1, base + 2, base, base + 2, base + 3);
-  }
-
-  /** Face on the boundary of cell (i,j), side 0 +X, 1 -X, 2 +Z, 3 -Z (normal direction). */
-  vface(i, j, side, y0, y1, sc = 2) {
-    if (y1 - y0 < 1e-3) return;
-    const x0 = i;
-    const x1 = i + 1;
-    const z0 = j;
-    const z1 = j + 1;
-    const v0 = y0 / sc;
-    const v1 = y1 / sc;
-    if (side === 0) this.quad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], [-z1 / sc, v0], [-z0 / sc, v0], [-z0 / sc, v1], [-z1 / sc, v1]);
-    else if (side === 1) this.quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], [z0 / sc, v0], [z1 / sc, v0], [z1 / sc, v1], [z0 / sc, v1]);
-    else if (side === 2) this.quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], [x0 / sc, v0], [x1 / sc, v0], [x1 / sc, v1], [x0 / sc, v1]);
-    else this.quad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], [-x1 / sc, v0], [-x0 / sc, v0], [-x0 / sc, v1], [-x1 / sc, v1]);
-  }
-
-  get empty() {
-    return !this.i.length;
-  }
-
-  build() {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.u, 2));
-    g.setIndex(this.i);
-    g.computeBoundingSphere();
-    g.userData.quads = true;
-    return g;
-  }
-}
-
-const SIDES = [[1, 0, 0], [-1, 0, 1], [0, 1, 2], [0, -1, 3]];
-
 /**
  * Instanced copies of small repeated things (stools, buckets, baskets),
  * one InstancedMesh per part per key so each can be culled and baked.
@@ -1052,32 +979,6 @@ function mergeGroup(group, skip = new Set()) {
 function matAt(x, y, z, yaw = 0, s = 1, rx = 0) {
   _q.setFromEuler(new THREE.Euler(rx, yaw, 0, 'YXZ'));
   return new THREE.Matrix4().compose(_v.set(x, y, z), _q, _s.set(s, s, s));
-}
-
-/** Continuous hum on a panner (fridges, massage chairs). */
-function makeHum(audio, p, { freq = 60, type = 'sawtooth', cut = 240, gain = 0 } = {}) {
-  const ctx = audio.ctx;
-  const o = ctx.createOscillator();
-  o.type = type;
-  o.frequency.value = freq;
-  const f = ctx.createBiquadFilter();
-  f.type = 'lowpass';
-  f.frequency.value = cut;
-  const g = ctx.createGain();
-  g.gain.value = gain;
-  o.connect(f).connect(g).connect(p);
-  o.start();
-  return {
-    gain: g.gain,
-    freq: o.frequency,
-    stop() {
-      try {
-        o.stop();
-      } catch {
-        /* already stopped */
-      }
-    },
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1796,8 +1697,9 @@ export default {
           if (hi <= lo + 0.02) continue;
           const lowC = g.get(oi, oj);
           const mat = (lowC === WATER || lowC === HOLE) && bathKind[K(oi, oj)] !== 3 ? basin : riserMat(i, j);
-          if (!riserQ.has(mat)) riserQ.set(mat, new Quads());
-          riserQ.get(mat).vface(i, j, s, lo, hi, mat === riserWood ? 1 : 1.6);
+          if (!riserQ.has(mat)) riserQ.set(mat, new GeoBuilder());
+          const sc = mat === riserWood ? 1 : 1.6;
+          riserQ.get(mat).vface(i, j, s, 1, lo, hi, sc, sc);
         }
       }
     }
@@ -1809,7 +1711,7 @@ export default {
     mesh(world, buildCellQuads(g, ceilPred(Z_DRESS), (i, j) => ceilOf(i, j), false, 1), woodCeil);
     mesh(world, buildCellQuads(g, ceilPred(Z_BATH), (i, j) => ceilOf(i, j), false, 2), bathCeil);
     const dropQ = new Map();
-    const clerestory = new Quads();
+    const clerestory = new GeoBuilder();
     for (let j = 0; j < H; j++) {
       for (let i = 0; i < W; i++) {
         if (!interiorCell(i, j)) continue;
@@ -1822,17 +1724,20 @@ export default {
           if (b <= a + 1e-3) continue;
           const z = zoneAt(oi, oj);
           if (z === Z_BATH && zoneAt(i, j) === Z_BATH && a >= BATH_CEIL - 0.01) {
-            clerestory.vface(i, j, s, a, b, 1.2);
+            clerestory.vface(i, j, s, 1, a, b, 1.2, 1.2);
             continue;
           }
           const mat = z === Z_BATH ? (a < 2.3 ? tileWall : upperBath) : plaster;
-          if (!dropQ.has(mat)) dropQ.set(mat, new Quads());
+          if (!dropQ.has(mat)) dropQ.set(mat, new GeoBuilder());
           const q = dropQ.get(mat);
           if (z === Z_BATH && a < 2.3) {
-            q.vface(i, j, s, a, 2.3, 1.6);
-            if (!dropQ.has(upperBath)) dropQ.set(upperBath, new Quads());
-            dropQ.get(upperBath).vface(i, j, s, 2.3, b, 2);
-          } else q.vface(i, j, s, a, b, mat === plaster ? 2 : 1.6);
+            q.vface(i, j, s, 1, a, 2.3, 1.6, 1.6);
+            if (!dropQ.has(upperBath)) dropQ.set(upperBath, new GeoBuilder());
+            dropQ.get(upperBath).vface(i, j, s, 1, 2.3, b, 2, 2);
+          } else {
+            const sc = mat === plaster ? 2 : 1.6;
+            q.vface(i, j, s, 1, a, b, sc, sc);
+          }
         }
       }
     }
@@ -2867,8 +2772,8 @@ export default {
       // fridge hum and the massage chairs
       if (audio.ready && !hum.panner) {
         hum.panner = audio.panner(0, 1, 0, { ref: 1.2, rolloff: 1.6 });
-        hum.fridge = makeHum(audio, hum.panner, { freq: 58, cut: 200, gain: 0.05 });
-        hum.chair = makeHum(audio, hum.panner, { freq: 42, type: 'square', cut: 160, gain: 0 });
+        hum.fridge = audio.hum(hum.panner, { freq: 58, cut: 200, gain: 0.05 });
+        hum.chair = audio.hum(hum.panner, { freq: 42, type: 'square', cut: 160, gain: 0 });
         world.onDispose.push(() => {
           hum.fridge.stop();
           hum.chair.stop();

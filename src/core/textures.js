@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hash2 as hash } from './rng.js';
 
 // Every texture in the game is painted on a canvas at runtime, so the game
 // ships without image assets. Textures are cached by key and never disposed.
@@ -17,28 +18,30 @@ function canvas(w, h) {
   return c;
 }
 
-function tex(key, w, h, draw, { srgb = true, repeat = true, mips = true } = {}) {
-  if (cache.has(key)) return cache.get(key);
+/**
+ * A texture painted by draw(ctx, w, h). With a key it is cached for the
+ * session (and never disposed); without one it belongs to the level that made
+ * it and is freed with it.
+ */
+export function canvasTexture(key, w, h, draw, { srgb = true, repeat = false, mips = true, anisotropy = 4 } = {}) {
+  if (key && cache.has(key)) return cache.get(key);
   const c = canvas(w, h);
-  const ctx = c.getContext('2d', { willReadFrequently: false });
-  draw(ctx, w, h);
+  draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = maxAniso;
+  t.anisotropy = anisotropy;
   t.generateMipmaps = mips;
-  t.userData.cached = true;
-  cache.set(key, t);
+  t.userData.cached = !!key;
+  if (key) cache.set(key, t);
   return t;
 }
 
-// ---- noise helpers --------------------------------------------------------
-
-function hash(x, y, s) {
-  let h = (x * 374761393 + y * 668265263 + s * 982451653) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+function tex(key, w, h, draw, { srgb = true, repeat = true, mips = true } = {}) {
+  return canvasTexture(key, w, h, draw, { srgb, repeat, mips, anisotropy: maxAniso });
 }
+
+// ---- noise helpers --------------------------------------------------------
 
 /** Tileable value noise sampled at (x, y) with a lattice period. */
 function vnoise(x, y, period, seed) {

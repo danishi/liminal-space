@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Grid, FLOOR, WALL, VOID, HOLE, PIT_DEPTH, buildWallFaces, buildFloors, buildRisers, buildStairs, buildCellQuads } from '../core/grid.js';
 import { paint, pbr, ceilingTile } from '../core/surfaces.js';
-import { glowSprite } from '../core/textures.js';
+import { canvasTexture, glowSprite } from '../core/textures.js';
 import { mesh, ceilingFixtures, doorModel, decorate } from './common.js';
 import { PropKit, keep } from '../props/kit.js';
 import { photo, modelSize } from '../core/assets.js';
@@ -36,16 +36,7 @@ const WATCHER_LOOK = { body: 0x1a1816, coat: true };
 // ---------------------------------------------------------------------------
 // Canvas textures (signs, skylights, the directory map). Made per level.
 
-function canvasTex(w, h, draw, srgb = true) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
-  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  return t;
-}
+const canvasTex = (w, h, draw) => canvasTexture(null, w, h, draw);
 
 const SANS = '"IBM Plex Sans", "Helvetica Neue", Arial, sans-serif';
 const SERIF = 'Georgia, "Times New Roman", serif';

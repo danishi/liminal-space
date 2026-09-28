@@ -17,6 +17,7 @@ export const DIRS = [
 
 export const PIT_DEPTH = -14; // floor height of a hole (visual shaft bottom)
 const STEP = 0.55; // max height difference you can walk up
+const _n = new THREE.Vector3();
 
 /**
  * A 2.5D tile map in the XZ plane. Cell (i, j) covers
@@ -277,7 +278,8 @@ export class Grid {
 // Geometry builders. UVs are in world units divided by a texture scale so
 // textures tile seamlessly regardless of wall length.
 
-class GeoBuilder {
+/** Collects quads (4 vertices, 6 indices each) in the layout the light baker can tessellate. */
+export class GeoBuilder {
   constructor() {
     this.pos = [];
     this.nrm = [];
@@ -291,6 +293,28 @@ class GeoBuilder {
     for (let k = 0; k < 4; k++) this.nrm.push(...n);
     this.uv.push(...uva, ...uvb, ...uvc, ...uvd);
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+
+  /**
+   * Quad from four corner points; the normal is (b - a) × (d - a). Without
+   * `uvs`, UVs are planar in metres / s (x and ±z).
+   */
+  quadPts(pts, s, uvs = null) {
+    const [a, b, c, d] = pts;
+    const ux = b[0] - a[0];
+    const uy = b[1] - a[1];
+    const uz = b[2] - a[2];
+    const vx = d[0] - a[0];
+    const vy = d[1] - a[1];
+    const vz = d[2] - a[2];
+    _n.set(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx).normalize();
+    const n = [_n.x, _n.y, _n.z];
+    const uv = uvs || pts.map((q) => [q[0] / s, (n[1] > 0 ? -q[2] : q[2]) / s]);
+    this.quad(a, b, c, d, n, uv[0], uv[1], uv[2], uv[3]);
+  }
+
+  get empty() {
+    return !this.idx.length;
   }
 
   /** Vertical face on a cell boundary. side: 0 +X, 1 -X, 2 +Z, 3 -Z (normal direction). */
@@ -330,7 +354,8 @@ class GeoBuilder {
   }
 }
 
-const SIDE = [
+/** Neighbour offsets with the matching vface side: [dx, dy, side]. */
+export const SIDES = [
   [1, 0, 0],
   [-1, 0, 1],
   [0, 1, 2],
@@ -352,7 +377,7 @@ export function buildWallFaces(grid, opts) {
   for (let j = 0; j < grid.h; j++) {
     for (let i = 0; i < grid.w; i++) {
       if (!solid(grid.get(i, j), i, j)) continue;
-      for (const [dx, dy, side] of SIDE) {
+      for (const [dx, dy, side] of SIDES) {
         const oi = i + dx;
         const oj = j + dy;
         if (!grid.inBounds(oi, oj) || !open(grid.get(oi, oj), oi, oj)) continue;
@@ -373,7 +398,7 @@ export function buildRisers(grid, { pred = (c) => c !== WALL && c !== VOID, uSca
   for (let j = 0; j < grid.h; j++) {
     for (let i = 0; i < grid.w; i++) {
       if (!pred(grid.get(i, j), i, j)) continue;
-      for (const [dx, dy, side] of SIDE) {
+      for (const [dx, dy, side] of SIDES) {
         const oi = i + dx;
         const oj = j + dy;
         if (!grid.inBounds(oi, oj) || !pred(grid.get(oi, oj), oi, oj)) continue;

@@ -44,3 +44,16 @@ export class RNG {
     return arr;
   }
 }
+
+/** Integer hash of a lattice point to [0, 1) (for tileable noise). */
+export function hash2(x, y, s = 0) {
+  let h = (x * 374761393 + y * 668265263 + s * 982451653) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** A seeded mulberry32 as a plain function returning [0, 1). */
+export function rngFn(seed) {
+  const r = new RNG(seed);
+  return () => r.next();
+}

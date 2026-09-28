@@ -1,30 +1,13 @@
-import * as THREE from 'three';
+import { canvasTexture } from '../core/textures.js';
 
 // Small canvas-painted images for props: posters, paintings, signs, screens.
-
-const cache = new Map();
-
-function make(key, w, h, draw) {
-  if (key && cache.has(key)) return cache.get(key);
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  const ctx = c.getContext('2d');
-  draw(ctx, w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  t.userData.cached = !!key;
-  if (key) cache.set(key, t);
-  return t;
-}
 
 const FONT = '"IBM Plex Sans", "Zen Kaku Gothic New", "Hiragino Sans", sans-serif';
 const DOT = '"DotGothic16", monospace';
 
 /** Generic bilingual sign: big text + optional small subtitle, with an arrow. */
 export function signTexture(text, sub = '', { bg = '#1d2a3a', fg = '#ffffff', w = 512, h = 128, arrow = '', accent = null } = {}) {
-  return make(`sign:${text}:${sub}:${bg}:${fg}:${arrow}:${accent}`, w, h, (ctx) => {
+  return canvasTexture(`sign:${text}:${sub}:${bg}:${fg}:${arrow}:${accent}`, w, h, (ctx) => {
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, w, h);
     if (accent) {
@@ -52,7 +35,7 @@ export function signTexture(text, sub = '', { bg = '#1d2a3a', fg = '#ffffff', w 
 
 /** Colourful poster; `seed` picks a layout. */
 export function posterTexture(seed, { mood = 0 } = {}) {
-  return make(`poster:${seed}:${mood}`, 256, 360, (ctx, w, h) => {
+  return canvasTexture(`poster:${seed}:${mood}`, 256, 360, (ctx, w, h) => {
     const r = (n) => (Math.sin(seed * 91.7 + n * 13.3) * 43758.5453) % 1;
     const rr = (n) => Math.abs(r(n));
     const hue = Math.floor(rr(1) * 360);
@@ -80,7 +63,7 @@ export function posterTexture(seed, { mood = 0 } = {}) {
 
 /** Framed painting: calm landscape, or at depth a faceless portrait. */
 export function paintingTexture(seed, { eerie = false } = {}) {
-  return make(`painting:${seed}:${eerie}`, 256, 200, (ctx, w, h) => {
+  return canvasTexture(`painting:${seed}:${eerie}`, 256, 200, (ctx, w, h) => {
     if (!eerie) {
       const sky = ctx.createLinearGradient(0, 0, 0, h);
       sky.addColorStop(0, `hsl(${200 + (seed % 5) * 8},40%,70%)`);
@@ -123,7 +106,7 @@ export function paintingTexture(seed, { eerie = false } = {}) {
 
 /** Vending machine front: rows of drinks, price tags and a lit panel. */
 export function vendingTexture(seed) {
-  return make(`vend:${seed}`, 256, 512, (ctx, w, h) => {
+  return canvasTexture(`vend:${seed}`, 256, 512, (ctx, w, h) => {
     ctx.fillStyle = seed % 2 ? '#e8ecef' : '#d64032';
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#f6f8f5';
@@ -156,7 +139,7 @@ export function vendingTexture(seed) {
 }
 
 export function screenStatic(seed) {
-  return make(null, 128, 96, (ctx, w, h) => {
+  return canvasTexture(null, 128, 96, (ctx, w, h) => {
     for (let y = 0; y < h; y += 2) {
       for (let x = 0; x < w; x += 2) {
         const v = Math.random() * 200 + (seed % 2) * 20;
@@ -168,7 +151,7 @@ export function screenStatic(seed) {
 }
 
 export function clockFace(eerie = false) {
-  return make(`clock:${eerie}`, 128, 128, (ctx) => {
+  return canvasTexture(`clock:${eerie}`, 128, 128, (ctx) => {
     ctx.fillStyle = '#f4f1e6';
     ctx.beginPath();
     ctx.arc(64, 64, 62, 0, Math.PI * 2);
@@ -193,7 +176,7 @@ export function clockFace(eerie = false) {
 
 /** Wooden ema plaque with scribbled wishes. */
 export function emaTexture(seed) {
-  return make(`ema:${seed % 6}`, 128, 96, (ctx) => {
+  return canvasTexture(`ema:${seed % 6}`, 128, 96, (ctx) => {
     ctx.fillStyle = '#d8b27a';
     ctx.beginPath();
     ctx.moveTo(0, 30);
@@ -212,7 +195,7 @@ export function emaTexture(seed) {
 }
 
 export function bulletinTexture(seed) {
-  return make(`bulletin:${seed % 4}`, 512, 256, (ctx, w, h) => {
+  return canvasTexture(`bulletin:${seed % 4}`, 512, 256, (ctx, w, h) => {
     ctx.fillStyle = '#b89366';
     ctx.fillRect(0, 0, w, h);
     for (let i = 0; i < 9; i++) {
@@ -231,7 +214,7 @@ export function bulletinTexture(seed) {
 }
 
 export function mapBoard() {
-  return make('mapboard', 512, 320, (ctx, w, h) => {
+  return canvasTexture('mapboard', 512, 320, (ctx, w, h) => {
     ctx.fillStyle = '#f4f4ee';
     ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#2e7d4f';
