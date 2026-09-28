@@ -39,6 +39,9 @@ seeded right before `buildWorld` (three.js draws uuids from it, and a few canvas
 - `src/game/world.js` — a built level: collision (grid + prop boxes + circles, height-aware), the
   `unease(i, j)` gradient, doors to other levels, entities. Stage modules fill it in.
 - `src/game/game.js` — renderer, post-processing, reflection probe capture, the drift flow, HUD updates.
+  `start(index, depth)` begins a run: Start drifting picks a random level at depth 0, the title's level
+  list passes the chosen level and starting depth (the pause screen's "levels passed" counts from
+  `startDepth`).
   `frame(dt)` runs one frame of simulation and rendering; the drift loads the next level (module, assets,
   looks), builds it, then compiles its shaders (`warmShaders`) while the screen is black, and nothing is
   drawn while `loading`. After a level starts, `prefetchAhead` picks where a fading signal will drop you

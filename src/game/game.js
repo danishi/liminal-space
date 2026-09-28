@@ -65,6 +65,7 @@ export class Game {
     this.world = null;
     this.stageIndex = 0;
     this.depth = 0;
+    this.startDepth = 0;
     this.time = 0;
     this.totalTime = 0;
     this.fear = 0;
@@ -263,15 +264,18 @@ export class Game {
     this.audio.setAmbience(this.world.env.ambience, this.world.bleedStages[0]?.bleed?.ambience);
   }
 
-  /** Leaves the title and drops into a random level. */
-  async start() {
+  /**
+   * Leaves the title and drops into level `index` (a random one by default),
+   * `depth` drifts deep: unease starts as if you had come that far.
+   */
+  async start(index = null, depth = 0) {
     this.audio.init();
-    this.depth = 0;
+    this.depth = this.startDepth = depth;
     this.totalTime = 0;
     this.history = [];
     this.input.enabled = true;
     this.input.requestLock();
-    await this.drift(this.randomStage(this.stageIndex), 'start');
+    await this.drift(index ?? this.randomStage(this.stageIndex), 'start');
   }
 
   /**
@@ -336,7 +340,12 @@ export class Game {
   prefetchAhead() {
     this.nextStage = this.randomStage(this.stageIndex);
     const ahead = new Set([this.nextStage, ...this.world.doors.map((d) => d.dest)]);
-    for (const i of ahead) loadStage(i).then((s) => prefetch(s.assets)).catch(() => {});
+    for (const i of ahead) this.prefetchLevel(i);
+  }
+
+  /** Starts downloading a level's code and assets without building anything. */
+  prefetchLevel(index) {
+    loadStage(index).then((s) => prefetch(s.assets)).catch(() => {});
   }
 
   pause() {
@@ -347,7 +356,7 @@ export class Game {
     this.input.releaseLock();
     this.audio.setDucked(true);
     this.ui.showResumeHint(false);
-    this.ui.showPause(this.world, this.totalTime, this.depth);
+    this.ui.showPause(this.world, this.totalTime, this.depth - this.startDepth);
   }
 
   resume() {
