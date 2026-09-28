@@ -34,7 +34,10 @@ export class Batch {
   finish() {
     for (const e of this.sets.values()) {
       e.meshes = e.parts.map((p) => {
-        const im = new THREE.InstancedMesh(p.geo.clone(), p.mat, e.list.length);
+        // its own copy (it gets a per-instance bake), owned by the level: clones share userData
+        const geo = p.geo.clone();
+        geo.userData = {};
+        const im = new THREE.InstancedMesh(geo, p.mat, e.list.length);
         e.list.forEach((mm, n) => im.setMatrixAt(n, _m.multiplyMatrices(mm, p.m)));
         im.instanceMatrix.needsUpdate = true;
         im.computeBoundingSphere();

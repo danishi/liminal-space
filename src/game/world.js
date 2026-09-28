@@ -319,14 +319,19 @@ export class World {
     for (const e of this.entities) e.dispose?.();
     for (const fn of this.onDispose) fn();
     this.root.traverse((o) => {
-      if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
+      // instance buffers, bone textures and shadow maps live on the object itself
+      if (o.isInstancedMesh) o.dispose();
+      if (o.isSkinnedMesh) o.skeleton?.dispose();
+      if (o.isLight) o.dispose();
+      // sprites share one global quad
+      if (o.geometry && !o.geometry.userData.shared && !o.isSprite) o.geometry.dispose();
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
           if (m.userData.shared) continue;
-          for (const key of ['map', 'emissiveMap', 'alphaMap', 'normalMap', 'roughnessMap']) {
+          for (const key in m) {
             const t = m[key];
-            if (t && !t.userData.cached) t.dispose();
+            if (t?.isTexture && !t.userData.cached) t.dispose();
           }
           m.dispose();
         }

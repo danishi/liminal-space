@@ -96,6 +96,7 @@ export class UI {
     this.hudEl.hidden = !on;
     $('touch').hidden = !on || !this.touchOn;
     if (!on) {
+      this.mem = null;
       this.dialog(null);
       this.toggleBigMap(false);
       this.setPrompt(null);

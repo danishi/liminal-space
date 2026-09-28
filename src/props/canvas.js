@@ -35,7 +35,9 @@ export function signTexture(text, sub = '', { bg = '#1d2a3a', fg = '#ffffff', w 
 
 /** Colourful poster; `seed` picks a layout. */
 export function posterTexture(seed, { mood = 0 } = {}) {
-  return canvasTexture(`poster:${seed}:${mood}`, 256, 360, (ctx, w, h) => {
+  // mood follows the level's unease (any float), so moody posters belong to the
+  // level that made them instead of piling up in the session cache
+  return canvasTexture(mood ? null : `poster:${seed}`, 256, 360, (ctx, w, h) => {
     const r = (n) => (Math.sin(seed * 91.7 + n * 13.3) * 43758.5453) % 1;
     const rr = (n) => Math.abs(r(n));
     const hue = Math.floor(rr(1) * 360);

@@ -198,21 +198,21 @@ export class Game {
 
   /** Renders the level around the spawn point into a reflection probe. */
   captureEnvironment(world) {
-    if (this.envTex) {
-      this.envTex.dispose();
-      this.envTex = null;
-    }
+    // the previous probe stays bound (and alive) until the new one is captured
+    const old = this.envRT;
+    this.envRT = null;
     if (world.env.envIntensity <= 0) {
       this.scene.environment = null;
+      old?.dispose();
       return;
     }
     world.lightPool?.snap(this.camera.position);
     const pos = this.camera.position.clone();
     const fl = this.flashlight.intensity;
     this.flashlight.intensity = 0;
-    const rt = this.pmrem.fromScene(this.scene, 0.03, 0.1, 80, { size: this.quality.env, position: pos });
-    this.envTex = rt.texture;
-    this.scene.environment = this.envTex;
+    this.envRT = this.pmrem.fromScene(this.scene, 0.03, 0.1, 80, { size: this.quality.env, position: pos });
+    old?.dispose();
+    this.scene.environment = this.envRT.texture;
     this.scene.environmentIntensity = world.env.envIntensity;
     this.flashlight.intensity = fl;
     this.probePos = pos;

@@ -127,7 +127,7 @@ export class PropKit {
         clone.applyMatrix4(_m.copy(o.matrixWorld));
         if (!byMat.has(o.material)) byMat.set(o.material, []);
         byMat.get(o.material).push(clone);
-        if (!o.material.userData.shared) o.geometry.dispose();
+        if (!o.geometry.userData.shared) o.geometry.dispose();
       });
       if (live.length) {
         // keep the live meshes in their group; strip merged ones

@@ -73,6 +73,7 @@ function loadModel(id) {
     wrap.add(root);
     root.traverse((o) => {
       if (o.isMesh) {
+        o.geometry.userData.shared = true;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const mt of mats) {
           for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) {
