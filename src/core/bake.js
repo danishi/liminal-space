@@ -92,6 +92,10 @@ export function tessellate(geo, size = 0.55) {
   return out;
 }
 
+// One uniform for every baked material: shared (model) materials are patched
+// once, so they must keep following whichever level is current.
+const BAKE = { scale: { value: 1 } };
+
 /** Adds the baked-light terms to a standard/physical material. */
 export function patchMaterial(mat, uniforms) {
   if (mat.userData.baked) return;
@@ -323,7 +327,8 @@ export function bakeWorld(world, extraSources = [], opts = {}) {
     }
   }
   const baker = new Baker(world, sources, opts);
-  const uniforms = { scale: { value: opts.scale ?? 1 } };
+  BAKE.scale.value = opts.scale ?? 1;
+  const uniforms = BAKE;
   const meshes = [];
   // apparitions move and doors animate; everything else is baked where it stands
   const skip = new Set();
@@ -336,6 +341,11 @@ export function bakeWorld(world, extraSources = [], opts = {}) {
     meshes.push(o);
   });
   for (const o of meshes) {
+    // the bake is per placement: a mesh drawing a cached geometry gets its own copy
+    if (o.geometry.userData.shared) {
+      o.geometry = o.geometry.clone();
+      o.geometry.userData = {};
+    }
     if (o.isInstancedMesh) {
       if (o.count > 0) baker.bakeInstances(o);
     } else {
