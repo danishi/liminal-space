@@ -6,7 +6,7 @@ import station from './station.js';
 import shrine from './shrine.js';
 import hotel from './hotel.js';
 import mall from './mall/index.js';
-import garage from './garage.js';
+import garage from './garage/index.js';
 import bathhouse from './bathhouse.js';
 
 // Levels are picked at random; each has a `tint` used for the light behind
