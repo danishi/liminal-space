@@ -26,8 +26,9 @@ npm run build   # production build to dist/ — run this before committing
 
 CI only builds and deploys `main` to GitHub Pages; there is no PR check. There is no test suite. Verify changes by building and, for gameplay changes, by running the game.
 For headless checks use Playwright with Chromium (`--use-angle=swiftshader`); software rendering runs at
-about 1 fps, so drive gameplay by calling `window.__game.updatePlay(dt)` in a loop rather than waiting
-in real time.
+about 1 fps, so drive gameplay by calling `window.__game.frame(dt)` (or `updatePlay(dt)`) in a loop
+rather than waiting in real time. Level builds are reproducible for a given seed if `Math.random` is
+seeded right before `buildWorld` (three.js draws uuids from it, and a few canvas painters use it).
 
 ## Architecture
 
@@ -38,12 +39,27 @@ in real time.
 - `src/game/world.js` — a built level: collision (grid + prop boxes + circles, height-aware), the
   `unease(i, j)` gradient, doors to other levels, entities. Stage modules fill it in.
 - `src/game/game.js` — renderer, post-processing, reflection probe capture, the drift flow, HUD updates.
+  `frame(dt)` runs one frame of simulation and rendering; the drift loads the next level (module, assets,
+  looks), builds it, then compiles its shaders (`warmShaders`) while the screen is black, and nothing is
+  drawn while `loading`. After a level starts, `prefetchAhead` picks where a fading signal will drop you
+  and downloads that level and the ones behind the doors.
 - `src/game/player.js` — movement, keyboard turning, steering assist, gravity and falling.
-- `src/stages/*.js` — one module per level. Contract: `{ id, code, name, sub, tint, assets, build(world),
-  makeDoor(world, destStage), bleed? }`. In `build`, carve the grid, set `world.spawn`, call
-  `world.finalizeLayout()` (seals unreachable pockets and computes distances), then build geometry,
-  lights, props (`decorate` with a prop table), residents and apparitions, and fill `world.env`.
-- `src/stages/common.js` — `buildShell`, `ceilingFixtures`, `doorModel`, `decorate`, `stairRun`.
+- `src/stages/index.js` — the level registry: `STAGES` holds each level's `{ id, code, name, sub, tint,
+  load }` and is the only stage code in the main bundle. `loadStage(i)` imports the level's module and
+  merges its definition into the entry, so always go through it before touching `assets`, `build` etc.
+- `src/stages/*.js`, `src/stages/<level>/index.js` — one module per level (mall, garage and bathhouse are
+  folders: `constants`, `textures`, `props`, `entities`, then one file per build phase). The module's
+  default export is `{ assets, build(world), makeDoor(world, destStage), bleed?, … }` (destStage may not
+  be loaded: only use its registry fields such as `tint`). In `build`, carve the grid, set `world.spawn`,
+  call `world.finalizeLayout()` (seals unreachable pockets and computes distances), then build geometry,
+  lights, props (`decorate` with a prop table), residents and apparitions, and fill `world.env`. In a
+  folder level, `build` calls the phases in order and they share state through a plain `lvl` object
+  (`const { … } = lvl` at the top, `Object.assign(lvl, { … })` at the end); keep the order, since the
+  sequence of `rng` calls decides the layout.
+- `src/stages/common.js` — `buildShell`, `ceilingFixtures`, `doorModel`, `decorate`, `stairRun`, `carveMaze`.
+  Shared low-level helpers live in core: `canvasTexture` (textures.js; cached by key, or owned by the
+  level when the key is null), `GeoBuilder`/`quadPts` and `SIDES` (grid.js), `hash2`/`rngFn` (rng.js),
+  `AudioEngine.hum`.
 - `src/props/` — `PropKit` builds props from primitives and merges static meshes per material in
   `finish()`; mark animated or individually-changing meshes with `keep()`. `library.js` holds the prop
   builders; each has `place` (`wall`, `high`, `floor`, `clutter`, `ceil`) and an optional footprint `fp`.
@@ -52,7 +68,10 @@ in real time.
   in `assets: { textures, models, hdris }`; the game awaits `preload()` before `build`, so builders use
   the synchronous getters (`photo(id, { uvScale })`, `model(id)`, `hdri(id)`). `photo` repeats the
   texture to its real-world size given the geometry's UV scale. `PropKit.model()` and
-  `P.modelProp(id)` place models; model materials are shared (`userData.shared`) and never disposed.
+  `P.modelProp(id)` place models; model geometry and materials are shared (`userData.shared`) and never
+  disposed. `World.dispose` frees everything else the level made (geometry, materials, textures not
+  flagged `userData.cached`, instance buffers, skeletons, shadow maps). `BufferGeometry.clone()` copies
+  `userData` by reference, so reset it (`geo.userData = {}`) when cloning a shared geometry you own.
 - `src/core/surfaces.js` — procedural PBR surfaces (colour + normal + roughness), cached by key.
 - `src/core/sculpt.js` — SDF sculpting: a `Sculpt` collects primitives (`sphere`, `ellipsoid`, `cone`
   (round cone), `box`, `cyl`, `torus`, with `k` blend, `bone`, `mat` paint region, `cut`, `rot`, `clip`,
