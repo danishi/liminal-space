@@ -6,6 +6,8 @@ import { bakeWorld } from '../core/bake.js';
 import { applyBleed, updateBleed } from './bleed.js';
 
 const STEP_UP = 0.55;
+// integer key for a grid cell (i, j) in the prop-box hash, valid for |j| < 32768
+const cellKey = (i, j) => i * 65536 + j;
 const _pp = new THREE.Vector3();
 
 /**
@@ -154,7 +156,7 @@ export class World {
     const cs = this.grid.cs;
     for (let j = Math.floor(b.z0 / cs); j <= Math.floor(b.z1 / cs); j++) {
       for (let i = Math.floor(b.x0 / cs); i <= Math.floor(b.x1 / cs); i++) {
-        const k = `${i},${j}`;
+        const k = cellKey(i, j);
         if (!this.boxHash.has(k)) this.boxHash.set(k, []);
         this.boxHash.get(k).push(b);
       }
@@ -198,7 +200,7 @@ export class World {
             block = this.floorAt(px, pz) > feetY + STEP_UP;
           }
           if (block) pushOutBox(pos, r, i * cs, j * cs, (i + 1) * cs, (j + 1) * cs);
-          const list = this.boxHash.get(`${i},${j}`);
+          const list = this.boxHash.get(cellKey(i, j));
           if (list) {
             for (const b of list) {
               if (feetY !== null && (feetY > b.y1 || feetY + 1.7 < b.y0)) continue;
@@ -298,7 +300,7 @@ export class World {
   blockedMount(m) {
     const cx = m.x + m.nx * 0.9;
     const cz = m.z + m.nz * 0.9;
-    const list = this.boxHash.get(`${Math.floor(cx / this.grid.cs)},${Math.floor(cz / this.grid.cs)}`);
+    const list = this.boxHash.get(cellKey(Math.floor(cx / this.grid.cs), Math.floor(cz / this.grid.cs)));
     if (!list) return false;
     return list.some((b) => cx > b.x0 - 0.6 && cx < b.x1 + 0.6 && cz > b.z0 - 0.6 && cz < b.z1 + 0.6);
   }
