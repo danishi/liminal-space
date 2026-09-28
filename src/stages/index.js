@@ -7,7 +7,7 @@ import shrine from './shrine.js';
 import hotel from './hotel.js';
 import mall from './mall/index.js';
 import garage from './garage/index.js';
-import bathhouse from './bathhouse.js';
+import bathhouse from './bathhouse/index.js';
 
 // Levels are picked at random; each has a `tint` used for the light behind
 // doors that lead to it.
