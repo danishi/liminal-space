@@ -24,7 +24,7 @@ function uvPlane(w, h) {
  */
 export function storefront(kit, rng, o) {
   const g = G();
-  const { w, kind, low = false, u = 0, mats } = o;
+  const { w, kind, low = false, mats } = o;
   const top = low ? 2.88 : SHOP_H;
   const openH = low ? 2.3 : 2.9;
   const wo = w - 0.68;

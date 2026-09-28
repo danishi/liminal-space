@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Grid, FLOOR, WALL, HOLE, DIRS, buildWallFaces, buildFloors, buildRisers } from '../core/grid.js';
 import { woodPanel, pbr } from '../core/surfaces.js';
 import { glowSprite } from '../core/textures.js';
-import { carveMaze, mesh, doorModel, decorate, glow } from './common.js';
+import { carveMaze, mesh, doorModel, decorate } from './common.js';
 import { LightPool } from '../core/lights.js';
 import { PropKit } from '../props/kit.js';
 import { photo, texMap, hdri } from '../core/assets.js';

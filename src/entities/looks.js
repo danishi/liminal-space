@@ -376,7 +376,7 @@ export function robotVacuum() {
 /** A car, sculpted: body, glass, wheels. kind: 'sedan' | 'kei' | 'van'. */
 export function carModel(kind = 'sedan', color = 0x8a1c1c) {
   const dims = { sedan: [1.78, 4.5, 1.42, 0.6], kei: [1.48, 3.4, 1.65, 0.5], van: [1.85, 4.7, 1.95, 0.45] }[kind];
-  const [w, l, h, hood] = dims;
+  const [w, l, h] = dims;
   const geo = sculptGeometry(`car:${kind}`, (sc) => {
     const hw = w / 2;
     const hl = l / 2;
