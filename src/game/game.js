@@ -240,10 +240,16 @@ export class Game {
   async showTitle() {
     this.state = 'title';
     this.input.enabled = false;
-    const index = this.randomStage();
-    const stage = await loadStage(index);
-    await preload(stage.assets);
-    await prewarm(stage.assets?.looks);
+    let index = this.randomStage();
+    try {
+      await this.loadLevels(index);
+    } catch (err) {
+      // back from a level after a new deploy replaced the level chunks: stay with one already here
+      if (!this.world) throw err;
+      console.warn('Could not load a level, staying with the current one', err);
+      index = this.stageIndex;
+      await this.loadLevels(index);
+    }
     this.buildWorld(index, { attract: true, seed: (Math.random() * 1e6) | 0 });
     await this.warmShaders();
     this.ui.show('title');
@@ -282,13 +288,18 @@ export class Game {
     // the screen is black now: stop drawing the old level while the next one loads
     this.loading = true;
     if (how !== 'start') this.depth++;
-    const index = dest ?? this.nextStage ?? this.randomStage(this.stageIndex);
+    let index = dest ?? this.nextStage ?? this.randomStage(this.stageIndex);
     // levels you've been through may leak into this one
-    const bleed = opts.bleed ?? (how === 'start' ? [] : pickBleed(this.history, index, this.depth));
-    for (const i of [index, ...bleed]) {
-      const stage = await loadStage(i);
-      await preload(stage.assets);
-      await prewarm(i === index ? stage.assets?.looks : stage.bleed?.looks);
+    let bleed = opts.bleed ?? (how === 'start' ? [] : pickBleed(this.history, index, this.depth));
+    try {
+      await this.loadLevels(index, bleed);
+    } catch (err) {
+      // a new deploy may have replaced the level chunks (or the network is gone):
+      // drift back into the level we are in, whose code and assets are loaded
+      console.warn('Could not load the next level, drifting back into this one', err);
+      index = this.stageIndex;
+      bleed = [];
+      await this.loadLevels(index, bleed);
     }
     this.buildWorld(index, { bleed });
     await this.warmShaders();
@@ -307,6 +318,15 @@ export class Game {
     if (how === 'fall') this.toast('You fell a long way down', null, 'danger');
     await this.ui.fadeIn();
     this.drifting = false;
+  }
+
+  /** Loads a level's code, assets and looks, plus those its bleeding donors bring along. */
+  async loadLevels(index, bleed = []) {
+    for (const i of [index, ...bleed]) {
+      const stage = await loadStage(i);
+      await preload(stage.assets);
+      await prewarm(i === index ? stage.assets?.looks : stage.bleed?.looks);
+    }
   }
 
   /**
@@ -341,6 +361,9 @@ export class Game {
   }
 
   async quitToTitle() {
+    // the pause menu stays clickable while a drift or another quit is loading
+    if (this.drifting) return;
+    this.drifting = true;
     this.input.enabled = false;
     this.input.releaseLock();
     this.closeDialog();
@@ -350,6 +373,7 @@ export class Game {
     this.loading = true;
     await this.showTitle();
     this.loading = false;
+    this.drifting = false;
     await this.ui.fadeIn();
   }
 

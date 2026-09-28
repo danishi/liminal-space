@@ -96,7 +96,9 @@ export class UI {
     this.hudEl.hidden = !on;
     $('touch').hidden = !on || !this.touchOn;
     if (!on) {
-      this.mem = null;
+      // the map memory holds the whole level; let it go with the HUD
+      this.mem = this.mapMem = null;
+      this.minimapView = this.bigMapView = null;
       this.dialog(null);
       this.toggleBigMap(false);
       this.setPrompt(null);
