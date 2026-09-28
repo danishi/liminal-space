@@ -83,10 +83,23 @@
         <p class="tagline">Walk through places that are nowhere.<br />When the signal fades, or you find another door, you drift somewhere else.</p>
         <nav class="menu" aria-label="Main menu">
           <button class="btn btn-primary" data-act="start">Start drifting</button>
+          <button class="btn" data-nav="levels">Choose a level</button>
           <button class="btn" data-nav="help">How to play</button>
           <button class="btn" data-nav="settings">Settings</button>
         </nav>
         <p class="title-foot">Headphones recommended · Sound starts after your first click</p>
+      </div>
+    </section>
+
+    <!-- ===== Level select ===== -->
+    <section id="screen-levels" class="screen screen-levels" hidden>
+      <div class="panel panel-wide">
+        <p class="eyebrow">Choose a level</p>
+        <h2 class="panel-title">Where to start</h2>
+        <label class="set-row level-depth" for="level-depth"><span>Start deeper</span><input type="range" id="level-depth" min="0" max="10" step="1" value="0" /><output id="out-level-depth"></output></label>
+        <p class="level-note">Begin as if you had already drifted this many times: more clutter, dead lights, holes, and things that watch. After this level you drift at random as usual.</p>
+        <div class="level-grid" id="level-list"></div>
+        <nav class="menu menu-row"><button class="btn btn-ghost" data-nav="back">Back</button></nav>
       </div>
     </section>
 
@@ -156,7 +169,7 @@
         <div class="help-cols">
           <div>
             <h3>Drifting</h3>
-            <p>There is nothing to win. Explore. Every level is chosen at random.</p>
+            <p>There is nothing to win. Explore. Every level is chosen at random, unless you choose where to start from the title screen.</p>
             <p>You leave a level when its <strong>signal</strong> (top right) fades out, when you walk through a <strong>door that hums</strong>, or when you fall into a hole.</p>
             <h3>Going deeper</h3>
             <p>The more levels you pass through, and the further you wander from where you arrived, the stranger and more cluttered things get. Residents may talk to you. Other things only watch.</p>

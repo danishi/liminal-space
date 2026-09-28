@@ -3,6 +3,7 @@ import { Game } from './game/game.js';
 import { loadSettings, saveSettings } from './core/settings.js';
 import * as THREE from 'three';
 import * as assets from './core/assets.js';
+import { STAGES } from './stages/index.js';
 
 const canvas = document.getElementById('view');
 const ui = new UI();
@@ -16,6 +17,11 @@ ui.bindSettings(settings, (s) => {
   saveSettings(s);
   game.applySettings(s);
 });
+
+ui.bindLevels(STAGES, (index, depth) => {
+  game.audio.uiClick();
+  game.start(index, depth);
+}, (index) => game.prefetchLevel(index));
 
 function wakeAudio() {
   const first = !game.audio.ready;
@@ -72,7 +78,7 @@ document.getElementById('dialog').addEventListener('click', () => {
 document.getElementById('bigmap').addEventListener('click', () => ui.toggleBigMap(false));
 
 addEventListener('keydown', (e) => {
-  if ((ui.current === 'settings' || ui.current === 'help') && e.code === 'Escape') {
+  if ((ui.current === 'settings' || ui.current === 'help' || ui.current === 'levels') && e.code === 'Escape') {
     ui.back();
     game.input.presses.delete('pause');
   }

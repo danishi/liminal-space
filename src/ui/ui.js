@@ -4,7 +4,7 @@ import { MapMemory, drawMinimap, drawBigMap, mapMarkerKey } from './minimap.js';
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['title', 'pause', 'settings', 'help'];
+const SCREENS = ['title', 'levels', 'pause', 'settings', 'help'];
 
 export class UI {
   constructor() {
@@ -82,10 +82,10 @@ export class UI {
     setTimeout(() => b.remove(), 700);
   }
 
-  showPause(world, totalTime, depth) {
+  showPause(world, totalTime, passed) {
     $('pause-stage').textContent = `${world.stage.code} · ${world.stage.name}`;
     $('pause-time').textContent = formatTime(totalTime);
-    $('pause-depth').textContent = String(depth);
+    $('pause-depth').textContent = String(passed);
     this.toggleBigMap(false);
     this.show('pause');
   }
@@ -292,6 +292,39 @@ export class UI {
     });
     if (!this.hudEl.hidden) $('touch').hidden = false;
     $('dlg-next').textContent = 'Tap to continue';
+  }
+
+  // ---- level select -------------------------------------------------------------
+
+  /**
+   * Fills the level list from the registry. onPick(index, depth) starts a run
+   * there; onPeek(index) fires when one is hovered or focused, so it can be
+   * fetched before it's picked.
+   */
+  bindLevels(stages, onPick, onPeek) {
+    const depth = $('level-depth');
+    const out = $('out-level-depth');
+    const sync = () => {
+      out.textContent = depth.value;
+    };
+    depth.addEventListener('input', sync);
+    sync();
+    const list = $('level-list');
+    stages.forEach((stage, i) => {
+      const b = document.createElement('button');
+      b.className = 'btn level-btn';
+      b.style.setProperty('--tint', `#${stage.tint.toString(16).padStart(6, '0')}`);
+      for (const [cls, text] of [['level-code', stage.code], ['level-name', stage.name], ['level-sub', stage.sub]]) {
+        const s = document.createElement('span');
+        s.className = cls;
+        s.textContent = text;
+        b.append(s);
+      }
+      b.addEventListener('click', () => onPick(i, Number(depth.value)));
+      b.addEventListener('pointerenter', () => onPeek(i));
+      b.addEventListener('focus', () => onPeek(i));
+      list.append(b);
+    });
   }
 
   // ---- settings -----------------------------------------------------------------

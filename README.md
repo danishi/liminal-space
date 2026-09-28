@@ -19,6 +19,8 @@ with the Web Audio API, and the photo-scanned textures and models are CC0 assets
 ## How it works
 
 - Each level is picked at random and built procedurally, so no two visits look the same.
+- **Choose a level** on the title screen to start in a particular one, and optionally deeper in (as if
+  you had already drifted a few times). From there you drift at random as usual.
 - You leave a level when its **signal** (top right) fades out, when you walk through a **door that hums**
   (the light behind it hints at where it leads), or when you **fall into a hole**.
 - Levels have height: stairs, sunken rooms, raised decks, platforms and pits.
