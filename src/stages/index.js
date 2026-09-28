@@ -5,7 +5,7 @@ import school from './school.js';
 import station from './station.js';
 import shrine from './shrine.js';
 import hotel from './hotel.js';
-import mall from './mall.js';
+import mall from './mall/index.js';
 import garage from './garage.js';
 import bathhouse from './bathhouse.js';
 
