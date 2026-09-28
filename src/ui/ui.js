@@ -1,6 +1,6 @@
 import { formatTime, DEFAULT_SETTINGS } from '../core/settings.js';
 import { staticDataURL } from '../core/textures.js';
-import { MapMemory, drawMinimap, drawBigMap } from './minimap.js';
+import { MapMemory, drawMinimap, drawBigMap, mapMarkerKey } from './minimap.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -96,6 +96,9 @@ export class UI {
     this.hudEl.hidden = !on;
     $('touch').hidden = !on || !this.touchOn;
     if (!on) {
+      // the map memory holds the whole level; let it go with the HUD
+      this.mem = this.mapMem = null;
+      this.minimapView = this.bigMapView = null;
       this.dialog(null);
       this.toggleBigMap(false);
       this.setPrompt(null);
@@ -133,7 +136,9 @@ export class UI {
   }
 
   updateHud(game) {
-    this.clockEl.textContent = formatTime(game.totalTime);
+    // the clock only changes once a second; rewriting it every frame dirties the HUD's layout
+    const clock = formatTime(game.totalTime);
+    if (clock !== this.clockText) this.clockEl.textContent = this.clockText = clock;
     const w = game.world;
     const frac = Math.max(0, w.timeLeft / w.duration);
     const lit = Math.ceil(frac * 5);
@@ -144,22 +149,36 @@ export class UI {
 
   drawMaps(world, player) {
     if (!this.mem || this.mem.world !== world) this.mem = new MapMemory(world);
+    if (this.mem !== this.mapMem) {
+      this.mapMem = this.mem;
+      this.minimapView = this.bigMapView = null;
+    }
     this.mem.timer -= 1;
     if (this.mem.timer <= 0) {
       this.mem.timer = 6;
       this.mem.reveal(player.pos.x, player.pos.z, 4);
     }
-    if (this.showMinimap) drawMinimap(this.minimap, world, this.mem, player);
-    if (this.bigMapOpen) drawBigMap(this.bigmapCanvas, world, this.mem, player);
+    // redraw only when something on the map moved or appeared
+    const view = `${player.pos.x.toFixed(3)},${player.pos.z.toFixed(3)},${player.yaw.toFixed(4)},${this.mem.version},${mapMarkerKey(world)}`;
+    if (this.showMinimap && view !== this.minimapView) {
+      this.minimapView = view;
+      drawMinimap(this.minimap, world, this.mem, player);
+    }
+    if (this.bigMapOpen && view !== this.bigMapView) {
+      this.bigMapView = view;
+      drawBigMap(this.bigmapCanvas, world, this.mem, player);
+    }
   }
 
   setMinimap(on) {
     this.showMinimap = on;
+    this.minimapView = null;
     this.minimapWrap.hidden = !on;
   }
 
   toggleBigMap(force) {
     const open = force ?? !this.bigMapOpen;
+    if (open !== this.bigMapOpen) this.bigMapView = null;
     this.bigMapOpen = open;
     this.bigmap.hidden = !open;
   }
@@ -172,7 +191,8 @@ export class UI {
       return;
     }
     this.promptEl.hidden = false;
-    this.promptKey.textContent = touch ? 'Use' : 'E';
+    const key = touch ? 'Use' : 'E';
+    if (this.promptKey.textContent !== key) this.promptKey.textContent = key;
     if (this.promptText.textContent !== text) this.promptText.textContent = text;
   }
 

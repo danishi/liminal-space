@@ -34,11 +34,6 @@ const deskSet = {
 };
 
 export default {
-  id: 'school',
-  code: 'LEVEL 188',
-  name: 'After-School Hallways',
-  sub: '黄昏の校舎 · A school in Japan at dusk',
-  tint: 0xffc890,
   assets: {
     textures: ['linoleum_brown', 'beige_wall_001', 'painted_concrete', 'ceiling_interior'],
     models: ['SchoolDesk_01', 'SchoolChair_01', 'wall_clock', 'plastic_broom', 'metal_trash_can', 'fire_alarm'],

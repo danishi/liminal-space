@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hash2 as hash } from './rng.js';
 
 // Procedural PBR surfaces. Each painter fills a colour canvas plus height and
 // roughness fields; the height field becomes a tangent-space normal map.
@@ -12,12 +13,6 @@ export function setSurfaceAnisotropy(n) {
 }
 
 // ---- noise ----------------------------------------------------------------
-
-function hash(x, y, s) {
-  let h = (x * 374761393 + y * 668265263 + s * 982451653) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
 
 function vnoise(x, y, period, seed) {
   const xi = Math.floor(x);

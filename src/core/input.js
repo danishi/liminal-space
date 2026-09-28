@@ -41,6 +41,10 @@ export class Input {
     addEventListener('keydown', (e) => this.key(e, true));
     addEventListener('keyup', (e) => this.key(e, false));
     addEventListener('blur', () => this.held.clear());
+    // browsers announce a pad on its first button press; until then there is nothing to poll
+    this.pads = 0;
+    addEventListener('gamepadconnected', () => this.pads++);
+    addEventListener('gamepaddisconnected', () => (this.pads = Math.max(0, this.pads - 1)));
 
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
@@ -162,8 +166,15 @@ export class Input {
   }
 
   pollGamepad(dt) {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    const gp = pads && [...pads].find((p) => p && p.connected);
+    let gp = null;
+    if (this.pads && navigator.getGamepads) {
+      for (const p of navigator.getGamepads()) {
+        if (p && p.connected) {
+          gp = p;
+          break;
+        }
+      }
+    }
     if (!gp) {
       this.padMove.x = this.padMove.y = 0;
       this.padRun = false;

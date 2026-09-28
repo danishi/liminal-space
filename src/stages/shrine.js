@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Grid, FLOOR, WALL, HOLE, DIRS, buildWallFaces, buildFloors, buildRisers } from '../core/grid.js';
 import { woodPanel, pbr } from '../core/surfaces.js';
 import { glowSprite } from '../core/textures.js';
-import { mesh, doorModel, decorate, glow } from './common.js';
+import { carveMaze, mesh, doorModel, decorate } from './common.js';
 import { LightPool } from '../core/lights.js';
 import { PropKit } from '../props/kit.js';
 import { photo, texMap, hdri } from '../core/assets.js';
@@ -14,35 +14,6 @@ import { beastPose, tailSway } from '../entities/figures.js';
 
 const WALL_H = 2.3; // bamboo fence; the grove towers behind it
 
-function carveMaze(g, rng) {
-  const stack = [[1, 1]];
-  g.set(1, 1, FLOOR);
-  while (stack.length) {
-    const [i, j] = stack[stack.length - 1];
-    const nb = [[2, 0], [-2, 0], [0, 2], [0, -2]]
-      .map(([dx, dy]) => [i + dx, j + dy, dx, dy])
-      .filter(([x, y]) => x > 0 && y > 0 && x < g.w - 1 && y < g.h - 1 && g.get(x, y) === WALL);
-    if (!nb.length) {
-      stack.pop();
-      continue;
-    }
-    const [x, y, dx, dy] = rng.pick(nb);
-    g.set(i + dx / 2, j + dy / 2, FLOOR);
-    g.set(x, y, FLOOR);
-    stack.push([x, y]);
-  }
-  for (let j = 1; j < g.h - 1; j += 2) {
-    for (let i = 1; i < g.w - 1; i += 2) {
-      if (g.countSolidNeighbors(i, j) < 3 || !rng.chance(0.5)) continue;
-      const opts = DIRS.filter(([dx, dy]) => g.get(i + dx, j + dy) === WALL && i + dx > 0 && j + dy > 0 && i + dx < g.w - 1 && j + dy < g.h - 1);
-      if (opts.length) {
-        const [dx, dy] = rng.pick(opts);
-        g.set(i + dx, j + dy, FLOOR);
-      }
-    }
-  }
-}
-
 function kitsuneModel() {
   const fig = LOOKS.kitsune();
   beastPose(fig, 'sit');
@@ -50,11 +21,6 @@ function kitsuneModel() {
 }
 
 export default {
-  id: 'shrine',
-  code: 'LEVEL 1000',
-  name: 'Thousand Gates',
-  sub: '千本鳥居 · A shrine path in Japan at night',
-  tint: 0xff8a50,
   assets: {
     textures: ['bamboo_wall', 'stone_pathway_02', 'clean_pebbles', 'brown_planks_03'],
     models: ['wooden_lantern_01', 'rock_moss_set_01', 'fern_02', 'wooden_bucket_01'],

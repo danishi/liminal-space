@@ -24,11 +24,6 @@ function duckModel(scale = 1) {
 }
 
 export default {
-  id: 'poolrooms',
-  code: 'LEVEL 37',
-  name: 'The Poolrooms',
-  sub: 'Tiles, water, echoes',
-  tint: 0xd8fbff,
   assets: {
     textures: ['long_white_tiles'],
     models: ['rubber_duck_toy', 'lifebuoy', 'potted_plant_02', 'plastic_monobloc_chair_01'],

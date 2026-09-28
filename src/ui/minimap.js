@@ -13,6 +13,7 @@ export class MapMemory {
     this.canvas.height = g.h * K;
     this.ctx = this.canvas.getContext('2d');
     this.timer = 0;
+    this.version = 0; // bumped whenever a cell is revealed
   }
 
   reveal(px, pz, radiusCells = 4) {
@@ -28,6 +29,7 @@ export class MapMemory {
         const c = g.center(i, j);
         if (!g.los(px, pz, c.x, c.z)) continue;
         this.explored[k] = 1;
+        this.version++;
         const ct = g.get(i, j);
         ctx.fillStyle = ct === HOLE ? 'rgba(0,0,0,0.9)' : ct === WATER ? 'rgba(110,190,220,0.45)' : g.ramp[k] ? 'rgba(236,230,214,0.4)' : 'rgba(236,230,214,0.2)';
         ctx.fillRect(i * K, j * K, K, K);
@@ -72,6 +74,14 @@ function arrow(ctx, x, y, r, angle, color) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
+}
+
+/** Changes whenever the map's markers would (doors spotted, residents moving). */
+export function mapMarkerKey(world) {
+  let key = '';
+  for (const d of world.doors) key += d.seen ? '1' : '0';
+  for (const p of world.npcMarkers) key += `|${p.x.toFixed(2)},${p.z.toFixed(2)}`;
+  return key;
 }
 
 /** Markers visible on the map right now. */

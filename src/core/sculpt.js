@@ -771,7 +771,10 @@ export function skinnedSculpt(key, build, joints, opts = {}, matOpts = {}) {
   mesh.updateMatrixWorld(true);
   mesh.bind(new THREE.Skeleton(list));
   mesh.castShadow = true;
-  mesh.frustumCulled = false;
+  // generous bounds (rest pose × 2.5) cover any pose, so figures out of view
+  // can be culled from the main, AO and shadow passes without popping
+  const rest = geo.boundingSphere;
+  mesh.boundingSphere = new THREE.Sphere(rest.center.clone(), rest.radius * 2.5);
   mesh.userData.noBake = true;
   mesh.userData.bones = bones;
   return mesh;

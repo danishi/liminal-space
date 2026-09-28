@@ -92,11 +92,6 @@ function skyDome(grey) {
 }
 
 export default {
-  id: 'pastel',
-  code: 'LEVEL 3.14',
-  name: 'Pastel Dreamscape',
-  sub: 'Cotton-candy sky',
-  tint: 0xffd6ee,
   assets: { textures: ['beige_wall_001'], models: ['rubber_duck_toy'], looks: [['mannequin', 0], ['mannequin', 1], ['mannequin', 2], 'cat'] },
 
   build(world) {

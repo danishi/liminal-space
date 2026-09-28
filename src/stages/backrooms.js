@@ -98,11 +98,6 @@ function sunken(g, rng, depth, near) {
 }
 
 export default {
-  id: 'backrooms',
-  code: 'LEVEL 0',
-  name: 'The Backrooms',
-  sub: 'Endless yellow rooms',
-  tint: 0xfff0b0,
   assets: {
     textures: ['decrepit_wallpaper', 'dirty_carpet'],
     models: ['cardboard_box_01', 'WetFloorSign_01', 'metal_office_desk', 'plastic_monobloc_chair_01', 'metal_trash_can', 'drawer_cabinet', 'korean_fire_extinguisher_01', 'Television_01', 'ladder_sectioned_01', 'fire_alarm'],

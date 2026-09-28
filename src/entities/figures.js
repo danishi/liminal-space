@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Sculpt, sculptGeometry, sculptMaterial, skinnedSculpt, eyeball, noise3 } from '../core/sculpt.js';
+import { sculptGeometry, sculptMaterial, skinnedSculpt, eyeball, noise3 } from '../core/sculpt.js';
 
 // Sculpted characters. A humanoid is a skinned body (torso, limbs, clothes)
 // plus a finer-resolution head and hands parented to their bones, so faces
@@ -44,7 +44,7 @@ export class Rig {
   }
 
   reset() {
-    for (const b of Object.values(this.bones)) b.quaternion.identity();
+    for (const k in this.bones) this.bones[k].quaternion.identity();
   }
 
   offset(name, x, y, z) {
@@ -517,14 +517,17 @@ export function idlePose(rig, t, { sway = 1 } = {}) {
   rig.offset('hips', 0, 0, 0);
 }
 
+const _lookP = new THREE.Vector3();
+const _lookT = new THREE.Vector3();
+const _lookInv = new THREE.Matrix4();
+
 /** Turns neck and head toward a world point (yaw/pitch split over two bones). */
 export function lookAt(fig, target, { max = 1.2, pitch = 0.5, over = 1 } = {}) {
   const rig = fig.userData.rig;
   const head = rig.bones.head;
-  const p = new THREE.Vector3();
-  head.getWorldPosition(p);
-  const inv = new THREE.Matrix4().copy(fig.matrixWorld).invert();
-  const lp = target.clone().applyMatrix4(inv);
+  const p = head.getWorldPosition(_lookP);
+  const inv = _lookInv.copy(fig.matrixWorld).invert();
+  const lp = _lookT.copy(target).applyMatrix4(inv);
   const hp = p.applyMatrix4(inv);
   const dx = lp.x - hp.x;
   const dy = lp.y - hp.y - 0.08;
@@ -614,7 +617,6 @@ export function beast(spec) {
   const res = (spec.res || 0.009) * s;
   const mat = sculptMaterial({ detail: 'fur', detailScale: 40, detailStrength: 0.45, skinned: true, ...(spec.material || {}) });
   const mesh = skinnedSculpt(`beast:${spec.key}`, (sc) => {
-    const hp = J.pelvis.pos;
     const cp = J.chest.pos;
     sc.with({ bone: 'pelvis', mat: 'fur', k: g * 0.5 }, () => sc.ellipsoid([0, hh + g * 0.1, -len / 2 + g * 0.2], [g * 0.85, g * 0.95, g * 1.1]));
     sc.with({ bone: 'spine', mat: 'fur', k: g * 0.5 }, () => sc.ellipsoid([0, hh + g * 0.05, 0], [g * 0.8 * (spec.barrel || 1), g * 0.85 * (spec.barrel || 1), len * 0.45]));
@@ -673,7 +675,6 @@ export function beast(spec) {
   const hsz = (spec.headSize || 1) * g;
   for (const x of [-1, 1]) {
     const e = eyeball(hsz * 0.085, spec.eyes || { iris: 0xb07a20, pupil: 0.3 });
-    const h = J.head.pos;
     e.position.set(x * hsz * 0.27, hsz * 0.22, hsz * 0.47);
     e.rotation.y = x * 0.35;
     bones.head.add(e);

@@ -5,6 +5,39 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
+import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
+
+/**
+ * Renders the scene into its own multisampled target and copies the resolved
+ * image into the composer's buffer, so only the scene pays for MSAA: the
+ * full-screen passes after it write single-sample buffers.
+ */
+class ScenePass extends RenderPass {
+  constructor(scene, camera) {
+    super(scene, camera);
+    this.msaa = null;
+    this.copy = new FullScreenQuad(new THREE.ShaderMaterial({ ...CopyShader, uniforms: THREE.UniformsUtils.clone(CopyShader.uniforms), depthTest: false, depthWrite: false }));
+  }
+
+  setSamples(n) {
+    if ((this.msaa?.samples ?? 0) === n) return;
+    this.msaa?.dispose();
+    this.msaa = n > 0 ? new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: n }) : null;
+  }
+
+  setSize(w, h) {
+    this.msaa?.setSize(w, h);
+  }
+
+  render(renderer, writeBuffer, readBuffer, dt, maskActive) {
+    if (!this.msaa) return super.render(renderer, writeBuffer, readBuffer, dt, maskActive);
+    super.render(renderer, writeBuffer, this.msaa, dt, maskActive);
+    this.copy.material.uniforms.tDiffuse.value = this.msaa.texture;
+    renderer.setRenderTarget(readBuffer);
+    this.copy.render(renderer);
+  }
+}
 
 // Final "camcorder" pass: grain, vignette, chromatic aberration, scanlines
 // and a fear-driven wobble. Runs after tone mapping, in display space.
@@ -71,10 +104,11 @@ const TapeShader = {
 export class PostFX {
   constructor(renderer, scene, camera) {
     this.renderer = renderer;
-    // MSAA on the main render target keeps edges clean without a blur pass
-    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    // MSAA on the scene render keeps edges clean without a blur pass
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
     this.composer = new EffectComposer(renderer, rt);
-    this.renderPass = new RenderPass(scene, camera);
+    this.renderPass = new ScenePass(scene, camera);
+    this.renderPass.setSamples(4);
     this.gtao = new GTAOPass(scene, camera, 512, 512);
     this.gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.1, samples: 12 });
     this.gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 10 });
@@ -91,6 +125,21 @@ export class PostFX {
           cache.push(o);
         }
       });
+    };
+    // the AO normal pre-pass renders the scene a second time; shadow maps and
+    // world matrices are already up to date for this frame, so skip redoing them
+    const gtaoRender = this.gtao.render;
+    this.gtao.render = function (renderer, ...rest) {
+      const shadows = renderer.shadowMap.autoUpdate;
+      const matrices = this.scene.matrixWorldAutoUpdate;
+      renderer.shadowMap.autoUpdate = false;
+      this.scene.matrixWorldAutoUpdate = false;
+      try {
+        gtaoRender.call(this, renderer, ...rest);
+      } finally {
+        renderer.shadowMap.autoUpdate = shadows;
+        this.scene.matrixWorldAutoUpdate = matrices;
+      }
     };
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.6, 0.85);
     this.output = new OutputPass();
@@ -112,17 +161,14 @@ export class PostFX {
   }
 
   setSamples(n) {
-    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
-      if (rt.samples !== n) {
-        rt.samples = n;
-        rt.dispose();
-      }
-    }
+    this.renderPass.setSamples(n);
+    const rt = this.composer.renderTarget1;
+    this.renderPass.setSize(rt.width, rt.height);
   }
 
   setSize(w, h, pr) {
     this.composer.setPixelRatio(pr);
-    this.composer.setSize(w, h);
+    this.composer.setSize(w, h); // also sizes every pass, including the scene's MSAA target
     this.bloom.resolution.set(w * pr * 0.5, h * pr * 0.5);
     this.u.uRes.value.set(w * pr, h * pr);
   }

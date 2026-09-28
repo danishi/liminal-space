@@ -4,12 +4,14 @@ import { AudioEngine } from '../core/audio.js';
 import { Input } from '../core/input.js';
 import { setMaxAnisotropy } from '../core/textures.js';
 import { setSurfaceAnisotropy } from '../core/surfaces.js';
-import { preload, setAssetAnisotropy } from '../core/assets.js';
+import { preload, prefetch, setAssetAnisotropy } from '../core/assets.js';
 import { prewarm } from '../entities/looks.js';
 import { pickBleed } from './bleed.js';
 import { Player } from './player.js';
 import { World } from './world.js';
-import { STAGES } from '../stages/index.js';
+import { STAGES, loadStage } from '../stages/index.js';
+
+const _fwd = new THREE.Vector3();
 
 const QUALITY = {
   low: { pr: 0.75, bloom: false, lights: 4, shadows: false, ao: false, env: 128, probeFollow: false, msaa: 0 },
@@ -165,27 +167,52 @@ export class Game {
     this.fear = 0;
     this.staticLevel = 0;
     this.warnedSignal = false;
-    this.renderer.compile(this.scene, this.camera);
     return world;
+  }
+
+  /**
+   * Compiles the level's shaders before the first frame, including those of
+   * apparitions that start hidden (or they would stall the frame they appear).
+   * Programs are built for the post-processing buffer the scene really renders
+   * into, and in parallel where the browser supports it.
+   */
+  async warmShaders() {
+    const world = this.world;
+    const hidden = [];
+    for (const e of world.entities) {
+      e.object?.traverse((o) => {
+        if (!o.visible) {
+          o.visible = true;
+          hidden.push(o);
+        }
+      });
+    }
+    const r = this.renderer;
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(this.post.composer.readBuffer);
+    const done = r.compileAsync(this.scene, this.camera);
+    r.setRenderTarget(prev);
+    for (const o of hidden) o.visible = false;
+    await done;
   }
 
   /** Renders the level around the spawn point into a reflection probe. */
   captureEnvironment(world) {
-    if (this.envTex) {
-      this.envTex.dispose();
-      this.envTex = null;
-    }
+    // the previous probe stays bound (and alive) until the new one is captured
+    const old = this.envRT;
+    this.envRT = null;
     if (world.env.envIntensity <= 0) {
       this.scene.environment = null;
+      old?.dispose();
       return;
     }
     world.lightPool?.snap(this.camera.position);
     const pos = this.camera.position.clone();
     const fl = this.flashlight.intensity;
     this.flashlight.intensity = 0;
-    const rt = this.pmrem.fromScene(this.scene, 0.03, 0.1, 80, { size: this.quality.env, position: pos });
-    this.envTex = rt.texture;
-    this.scene.environment = this.envTex;
+    this.envRT = this.pmrem.fromScene(this.scene, 0.03, 0.1, 80, { size: this.quality.env, position: pos });
+    old?.dispose();
+    this.scene.environment = this.envRT.texture;
     this.scene.environmentIntensity = world.env.envIntensity;
     this.flashlight.intensity = fl;
     this.probePos = pos;
@@ -213,10 +240,18 @@ export class Game {
   async showTitle() {
     this.state = 'title';
     this.input.enabled = false;
-    const index = this.randomStage();
-    await preload(STAGES[index].assets);
-    await prewarm(STAGES[index].assets?.looks);
+    let index = this.randomStage();
+    try {
+      await this.loadLevels(index);
+    } catch (err) {
+      // back from a level after a new deploy replaced the level chunks: stay with one already here
+      if (!this.world) throw err;
+      console.warn('Could not load a level, staying with the current one', err);
+      index = this.stageIndex;
+      await this.loadLevels(index);
+    }
     this.buildWorld(index, { attract: true, seed: (Math.random() * 1e6) | 0 });
+    await this.warmShaders();
     this.ui.show('title');
     this.ui.hud(false);
     if (this.audio.ready) this.startAmbience();
@@ -250,16 +285,27 @@ export class Game {
     this.state = 'drifting';
     if (how !== 'start') this.audio.driftSound(how === 'fall' ? 'fall' : 'door');
     await this.ui.fadeOut(how === 'fall' || how === 'time');
+    // the screen is black now: stop drawing the old level while the next one loads
+    this.loading = true;
     if (how !== 'start') this.depth++;
-    const index = dest ?? this.randomStage(this.stageIndex);
+    let index = dest ?? this.nextStage ?? this.randomStage(this.stageIndex);
     // levels you've been through may leak into this one
-    const bleed = opts.bleed ?? (how === 'start' ? [] : pickBleed(this.history, index, this.depth));
-    for (const i of [index, ...bleed]) {
-      await preload(STAGES[i].assets);
-      await prewarm(i === index ? STAGES[i].assets?.looks : STAGES[i].bleed?.looks);
+    let bleed = opts.bleed ?? (how === 'start' ? [] : pickBleed(this.history, index, this.depth));
+    try {
+      await this.loadLevels(index, bleed);
+    } catch (err) {
+      // a new deploy may have replaced the level chunks (or the network is gone):
+      // drift back into the level we are in, whose code and assets are loaded
+      console.warn('Could not load the next level, drifting back into this one', err);
+      index = this.stageIndex;
+      bleed = [];
+      await this.loadLevels(index, bleed);
     }
     this.buildWorld(index, { bleed });
+    await this.warmShaders();
+    this.loading = false;
     this.history.push(index);
+    this.prefetchAhead();
     this.startAmbience();
     this.ui.show(null);
     this.ui.hud(true, this.world, this.depth);
@@ -272,6 +318,25 @@ export class Game {
     if (how === 'fall') this.toast('You fell a long way down', null, 'danger');
     await this.ui.fadeIn();
     this.drifting = false;
+  }
+
+  /** Loads a level's code, assets and looks, plus those its bleeding donors bring along. */
+  async loadLevels(index, bleed = []) {
+    for (const i of [index, ...bleed]) {
+      const stage = await loadStage(i);
+      await preload(stage.assets);
+      await prewarm(i === index ? stage.assets?.looks : stage.bleed?.looks);
+    }
+  }
+
+  /**
+   * Picks where the signal will drop you when it fades (same odds as picking
+   * then) and starts downloading that level and the ones behind the doors.
+   */
+  prefetchAhead() {
+    this.nextStage = this.randomStage(this.stageIndex);
+    const ahead = new Set([this.nextStage, ...this.world.doors.map((d) => d.dest)]);
+    for (const i of ahead) loadStage(i).then((s) => prefetch(s.assets)).catch(() => {});
   }
 
   pause() {
@@ -296,13 +361,19 @@ export class Game {
   }
 
   async quitToTitle() {
+    // the pause menu stays clickable while a drift or another quit is loading
+    if (this.drifting) return;
+    this.drifting = true;
     this.input.enabled = false;
     this.input.releaseLock();
     this.closeDialog();
     this.audio.setDucked(false);
     this.audio.setFear(0);
     await this.ui.fadeOut();
+    this.loading = true;
     await this.showTitle();
+    this.loading = false;
+    this.drifting = false;
     await this.ui.fadeIn();
   }
 
@@ -348,24 +419,8 @@ export class Game {
     const now = performance.now();
     const dt = Math.min(0.05, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
-    this.time += dt;
     this.input.pollGamepad(dt);
-    const wasPaused = this.state === 'paused';
-
-    if (this.state === 'playing') this.updatePlay(dt);
-    else if (this.world && this.world.attract) this.updateAttract(dt);
-    else if (this.world) this.world.update(0, this.ctx(0));
-    if (wasPaused && this.state === 'paused' && this.input.pressed('pause') && this.ui.current === 'pause') this.resume();
-
-    if (this.world) {
-      this.audio.updateListener(this.camera);
-      this.audio.update(dt);
-      this.flash = Math.max(0, this.flash - dt * 1.5);
-      this.staticPulse = Math.max(0, this.staticPulse - dt * 1.2);
-      this.post.update(this.time, this.fear, { static: Math.max(this.staticLevel, this.staticPulse), desat: this.desat || 0, flash: this.flash, bleed: this.state === 'playing' ? this.world.bleedLevel : 0 });
-      this.post.render(dt);
-    }
-
+    this.frame(dt);
     this.fpsAcc.t += dt;
     this.fpsAcc.n++;
     if (this.fpsAcc.t > 0.5) {
@@ -374,6 +429,31 @@ export class Game {
       this.fpsAcc.n = 0;
     }
     this.input.endFrame();
+  }
+
+  /** One frame of simulation and rendering (also handy for driving the game headless). */
+  frame(dt) {
+    this.time += dt;
+    // the screen is black while a level loads: nothing to update or draw
+    if (this.loading) return;
+    const wasPaused = this.state === 'paused';
+
+    if (this.state === 'playing') this.updatePlay(dt);
+    else if (this.world && this.world.attract) this.updateAttract(dt);
+    else if (this.world) this.world.update(0, this.ctx(0));
+    if (wasPaused && this.state === 'paused' && this.input.pressed('pause') && this.ui.current === 'pause') this.resume();
+
+    if (this.world) {
+      // a light that is off casts nothing: don't redraw its shadow map (but make
+      // sure it exists, or shading samples an unbound shadow texture)
+      this.flashlight.shadow.autoUpdate = this.flashlight.intensity > 0 || !this.flashlight.shadow.map;
+      this.audio.updateListener(this.camera);
+      this.audio.update(dt);
+      this.flash = Math.max(0, this.flash - dt * 1.5);
+      this.staticPulse = Math.max(0, this.staticPulse - dt * 1.2);
+      this.post.update(this.time, this.fear, { static: Math.max(this.staticLevel, this.staticPulse), desat: this.desat || 0, flash: this.flash, bleed: this.state === 'playing' ? this.world.bleedLevel : 0 });
+      this.post.render(dt);
+    }
   }
 
   ctx(dt) {
@@ -409,6 +489,7 @@ export class Game {
       }
       const li = p.flashlight ? w.env.flashlightIntensity : 0;
       this.flashlight.intensity += (li - this.flashlight.intensity) * Math.min(1, dt * 25);
+      if (!li && this.flashlight.intensity < 1e-3) this.flashlight.intensity = 0;
     } else if (inp.pressed('flashlight')) {
       this.toast('You won’t need a light here');
     }
@@ -489,7 +570,7 @@ export class Game {
 
   findInteractable() {
     const p = this.player;
-    const fwd = p.forward(new THREE.Vector3());
+    const fwd = p.forward(_fwd);
     const cam = this.camera.position;
     let best = null;
     let bestScore = -Infinity;

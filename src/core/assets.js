@@ -72,6 +72,7 @@ function loadModel(id) {
     wrap.add(root);
     root.traverse((o) => {
       if (o.isMesh) {
+        o.geometry.userData.shared = true;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const mt of mats) {
           for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) {
@@ -105,6 +106,26 @@ export async function preload(spec = {}) {
     ...(spec.models || []).map(loadModel),
     ...(spec.hdris || []).map(loadHDRI),
   ]);
+}
+
+const fetched = new Set();
+
+/**
+ * Downloads a stage's files into the HTTP cache without decoding anything, so
+ * a later preload() only has to parse them. Cheap enough to run while playing.
+ */
+export function prefetch(spec = {}) {
+  const urls = [];
+  for (const id of spec.textures || []) if (!pending.has(`tex:${id}`)) urls.push(...['diff', 'nor', 'arm'].map((m) => `${BASE}tex/${id}/${m}.webp`));
+  for (const id of spec.models || []) if (!pending.has(`model:${id}`)) urls.push(`${BASE}models/${id}.glb`);
+  for (const id of spec.hdris || []) if (!pending.has(`hdri:${id}`)) urls.push(`${BASE}hdri/${id}.hdr`);
+  for (const url of urls) {
+    if (fetched.has(url)) continue;
+    fetched.add(url);
+    fetch(url, { priority: 'low' })
+      .then((r) => r.blob())
+      .catch(() => fetched.delete(url));
+  }
 }
 
 /** A repeated clone of one map from a texture set ('map' | 'normalMap' | 'arm'). */

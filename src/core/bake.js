@@ -12,6 +12,9 @@ const _n = new THREE.Vector3();
 const _l = new THREE.Vector3();
 const _m = new THREE.Matrix4();
 
+// integer key for a grid cell (i, j), valid for |j| < 32768
+const cellKey = (i, j) => i * 65536 + j;
+
 /**
  * Splits the quads produced by the grid builders (4 vertices, 6 indices
  * each) into a finer grid so per-vertex lighting has enough resolution.
@@ -21,25 +24,33 @@ export function tessellate(geo, size = 0.55) {
   const nrm = geo.attributes.normal.array;
   const uv = geo.attributes.uv.array;
   const quads = pos.length / 12;
-  const P = [];
-  const N = [];
-  const U = [];
-  const I = [];
-  const v = (k, arr, dim) => Array.from(arr.slice(k * dim, k * dim + dim));
+  const len = (p, q) => Math.hypot(pos[q * 3] - pos[p * 3], pos[q * 3 + 1] - pos[p * 3 + 1], pos[q * 3 + 2] - pos[p * 3 + 2]);
+  // first pass: how finely each quad is split
+  const nus = new Int32Array(quads);
+  const nvs = new Int32Array(quads);
+  let verts = 0;
+  let tris = 0;
   for (let q = 0; q < quads; q++) {
     const b = q * 4;
-    const a0 = v(b, pos, 3);
-    const a1 = v(b + 1, pos, 3);
-    const a2 = v(b + 2, pos, 3);
-    const a3 = v(b + 3, pos, 3);
-    const t0 = v(b, uv, 2);
-    const t1 = v(b + 1, uv, 2);
-    const t2 = v(b + 2, uv, 2);
-    const t3 = v(b + 3, uv, 2);
-    const n = v(b, nrm, 3);
-    const nu = Math.max(1, Math.ceil(Math.hypot(a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]) / size));
-    const nv = Math.max(1, Math.ceil(Math.hypot(a3[0] - a0[0], a3[1] - a0[1], a3[2] - a0[2]) / size));
-    const base = P.length / 3;
+    const nu = Math.max(1, Math.ceil(len(b, b + 1) / size));
+    const nv = Math.max(1, Math.ceil(len(b, b + 3) / size));
+    nus[q] = nu;
+    nvs[q] = nv;
+    verts += (nu + 1) * (nv + 1);
+    tris += nu * nv * 2;
+  }
+  const P = new Float32Array(verts * 3);
+  const N = new Float32Array(verts * 3);
+  const U = new Float32Array(verts * 2);
+  // same index type three.js would pick for a plain array
+  const I = verts - 1 >= 65535 ? new Uint32Array(tris * 3) : new Uint16Array(tris * 3);
+  let pv = 0;
+  let pi = 0;
+  for (let q = 0; q < quads; q++) {
+    const b = q * 4;
+    const nu = nus[q];
+    const nv = nvs[q];
+    const base = pv;
     for (let j = 0; j <= nv; j++) {
       const s = j / nv;
       for (let i = 0; i <= nu; i++) {
@@ -48,9 +59,12 @@ export function tessellate(geo, size = 0.55) {
         const w1 = r * (1 - s);
         const w2 = r * s;
         const w3 = (1 - r) * s;
-        for (let c = 0; c < 3; c++) P.push(a0[c] * w0 + a1[c] * w1 + a2[c] * w2 + a3[c] * w3);
-        for (let c = 0; c < 2; c++) U.push(t0[c] * w0 + t1[c] * w1 + t2[c] * w2 + t3[c] * w3);
-        N.push(n[0], n[1], n[2]);
+        for (let c = 0; c < 3; c++) P[pv * 3 + c] = pos[b * 3 + c] * w0 + pos[(b + 1) * 3 + c] * w1 + pos[(b + 2) * 3 + c] * w2 + pos[(b + 3) * 3 + c] * w3;
+        for (let c = 0; c < 2; c++) U[pv * 2 + c] = uv[b * 2 + c] * w0 + uv[(b + 1) * 2 + c] * w1 + uv[(b + 2) * 2 + c] * w2 + uv[(b + 3) * 2 + c] * w3;
+        N[pv * 3] = nrm[b * 3];
+        N[pv * 3 + 1] = nrm[b * 3 + 1];
+        N[pv * 3 + 2] = nrm[b * 3 + 2];
+        pv++;
       }
     }
     for (let j = 0; j < nv; j++) {
@@ -59,19 +73,28 @@ export function tessellate(geo, size = 0.55) {
         const k10 = k00 + 1;
         const k01 = k00 + nu + 1;
         const k11 = k01 + 1;
-        I.push(k00, k10, k11, k00, k11, k01);
+        I[pi++] = k00;
+        I[pi++] = k10;
+        I[pi++] = k11;
+        I[pi++] = k00;
+        I[pi++] = k11;
+        I[pi++] = k01;
       }
     }
   }
   const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-  out.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
-  out.setIndex(I);
+  out.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+  out.setIndex(new THREE.BufferAttribute(I, 1));
   out.computeBoundingSphere();
   out.computeBoundingBox();
   return out;
 }
+
+// One uniform for every baked material: shared (model) materials are patched
+// once, so they must keep following whichever level is current.
+const BAKE = { scale: { value: 1 } };
 
 /** Adds the baked-light terms to a standard/physical material. */
 export function patchMaterial(mat, uniforms) {
@@ -109,43 +132,73 @@ export class Baker {
     // spatial hash of sources by cell
     const g = this.grid;
     this.hash = new Map();
-    this.vis = new Map();
     this.sources.forEach((s, idx) => {
       s.idx = idx;
-      const [i, j] = g.cellOf(s.pos.x, s.pos.z);
+      const i = Math.floor(s.pos.x / g.cs);
+      const j = Math.floor(s.pos.z / g.cs);
       s.ci = i;
       s.cj = j;
-      const k = `${i},${j}`;
+      const k = cellKey(i, j);
       if (!this.hash.has(k)) this.hash.set(k, []);
       this.hash.get(k).push(s);
     });
     this.reach = Math.ceil(radius / g.cs);
+    // sources that can reach each cell, computed on first use
+    this.nearCache = new Array(g.w * g.h);
+    // source → cell-centre line of sight: -1 unknown, 0 blocked, 1 clear
+    const cells = g.w * g.h;
+    this.vis = this.sources.length * cells <= 64e6 ? new Int8Array(this.sources.length * cells).fill(-1) : null;
+    this.visMap = this.vis ? null : new Map();
   }
 
   /** Can source s see cell (i, j)? Cached grid line of sight. */
   visible(s, i, j, x, z) {
-    const key = s.idx * 1e6 + j * 1000 + i;
-    let v = this.vis.get(key);
-    if (v === undefined) {
-      const g = this.grid;
+    const g = this.grid;
+    const inside = g.inBounds(i, j);
+    const key = inside ? s.idx * g.w * g.h + j * g.w + i : s.idx * 1e6 + j * 1000 + i;
+    let v = inside && this.vis ? this.vis[key] : this.visMap?.get(key) ?? -1;
+    if (v < 0) {
       const c = g.center(i, j);
       // test from the source to the cell centre and to the actual point; lit if either is clear
       v = g.los(s.pos.x, s.pos.z, c.x, c.z) ? 1 : 0;
-      this.vis.set(key, v);
+      if (inside && this.vis) this.vis[key] = v;
+      else (this.visMap || (this.visMap = new Map())).set(key, v);
     }
     if (v) return 1;
-    return this.grid.los(s.pos.x, s.pos.z, x, z) ? 0.8 : 0;
+    return g.los(s.pos.x, s.pos.z, x, z) ? 0.8 : 0;
   }
 
+  /**
+   * Sources near cell (i, j), in scan order. Sources that can't come within
+   * `radius` of any point in the cell are left out (irradiance would skip
+   * them anyway), and the list is kept per cell.
+   */
   near(i, j) {
+    const g = this.grid;
+    const inside = g.inBounds(i, j);
+    if (inside) {
+      const hit = this.nearCache[j * g.w + i];
+      if (hit) return hit;
+    }
     const out = [];
     const r = this.reach;
+    const cs = g.cs;
+    const R2 = this.radius * this.radius;
+    const x0 = i * cs;
+    const z0 = j * cs;
     for (let dj = -r; dj <= r; dj++) {
       for (let di = -r; di <= r; di++) {
-        const list = this.hash.get(`${i + di},${j + dj}`);
-        if (list) for (const s of list) out.push(s);
+        const list = this.hash.get(cellKey(i + di, j + dj));
+        if (!list) continue;
+        for (const s of list) {
+          const dx = Math.max(x0 - s.pos.x, 0, s.pos.x - (x0 + cs));
+          const dz = Math.max(z0 - s.pos.z, 0, s.pos.z - (z0 + cs));
+          if (dx * dx + dz * dz > R2 * 1.0001) continue;
+          out.push(s);
+        }
       }
     }
+    if (inside) this.nearCache[j * g.w + i] = out;
     return out;
   }
 
@@ -219,7 +272,8 @@ export class Baker {
       _n.fromBufferAttribute(nrm, k).normalize();
       const qx = _p.x + _n.x * 0.08;
       const qz = _p.z + _n.z * 0.08;
-      const [i, j] = g.cellOf(qx, qz);
+      const i = Math.floor(qx / g.cs);
+      const j = Math.floor(qz / g.cs);
       _p.x = qx;
       _p.z = qz;
       _p.y += _n.y * 0.02;
@@ -273,7 +327,8 @@ export function bakeWorld(world, extraSources = [], opts = {}) {
     }
   }
   const baker = new Baker(world, sources, opts);
-  const uniforms = { scale: { value: opts.scale ?? 1 } };
+  BAKE.scale.value = opts.scale ?? 1;
+  const uniforms = BAKE;
   const meshes = [];
   // apparitions move and doors animate; everything else is baked where it stands
   const skip = new Set();
@@ -286,6 +341,11 @@ export function bakeWorld(world, extraSources = [], opts = {}) {
     meshes.push(o);
   });
   for (const o of meshes) {
+    // the bake is per placement: a mesh drawing a cached geometry gets its own copy
+    if (o.geometry.userData.shared) {
+      o.geometry = o.geometry.clone();
+      o.geometry.userData = {};
+    }
     if (o.isInstancedMesh) {
       if (o.count > 0) baker.bakeInstances(o);
     } else {

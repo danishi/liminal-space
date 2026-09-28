@@ -192,6 +192,7 @@ export function applyBleed(world) {
     avoid.push(cell);
     const zone = growZone(g, cell[0], cell[1], rng.int(5, 8), rng.float(0, 100));
     const uniforms = { uGTime: { value: 0 }, tGEdge: { value: edgeTexture(g, zone) }, uGSize: { value: size } };
+    world.onDispose.push(() => uniforms.tGEdge.value.dispose());
     const b = stage.bleed || {};
     const raw = b.surfaces ? b.surfaces(world) : fallbackSurfaces(stage);
     // each surface is a material or { mat, uv } (metres per UV unit, as the donor builds it)

@@ -143,7 +143,8 @@ src/
   entities/  sculpted characters (figures: humanoid and quadruped rigs, poses; looks: the cast),
              residents (NPC), doors to other levels, apparitions
   props/     prop kit (batched merging), prop library, canvas-painted signs and posters
-  stages/    one module per level, plus shared shell/decoration helpers
+  stages/    one module per level (the larger levels are folders of modules), loaded on demand from
+             the registry in index.js, plus shared shell/decoration helpers
   ui/        screens, HUD, maps
 ```
 
