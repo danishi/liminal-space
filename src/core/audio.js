@@ -174,6 +174,15 @@ export class AudioEngine {
     const l = this.ctx.listener;
     const p = cam.position;
     const fwd = cam.getWorldDirection(this._fwd || (this._fwd = new Vector3()));
+    // standing still: the listener is already heading for these values
+    const last = this._lastPose || (this._lastPose = new Float64Array(6).fill(NaN));
+    if (last[0] === p.x && last[1] === p.y && last[2] === p.z && last[3] === fwd.x && last[4] === fwd.y && last[5] === fwd.z) return;
+    last[0] = p.x;
+    last[1] = p.y;
+    last[2] = p.z;
+    last[3] = fwd.x;
+    last[4] = fwd.y;
+    last[5] = fwd.z;
     const t = this.now;
     if (l.positionX) {
       l.positionX.setTargetAtTime(p.x, t, 0.02);
@@ -612,7 +621,10 @@ export class AudioEngine {
   setFear(level) {
     this.fear = level;
     if (!this.ready) return;
-    this.fearGain.gain.setTargetAtTime(Math.min(1, level) * 0.09, this.now, 0.4);
+    const v = Math.min(1, level) * 0.09;
+    if (Math.abs(v - (this._fearSent ?? -1)) < 1e-4) return;
+    this._fearSent = v;
+    this.fearGain.gain.setTargetAtTime(v, this.now, 0.4);
   }
 
   update(dt) {
@@ -646,6 +658,8 @@ export class AudioEngine {
   /** How much of the bleeding level can be heard (0..1). */
   setBleed(v) {
     if (!this.bleedAmb) return;
+    if (this.bleedAmb.sent !== undefined && Math.abs(v - this.bleedAmb.sent) < 1e-3) return;
+    this.bleedAmb.sent = v;
     this.bleedAmb.out.gain.setTargetAtTime(v * 0.9, this.now, 0.3);
     this.ambience?.out.gain.setTargetAtTime(1 - v * 0.6, this.now, 0.3);
   }

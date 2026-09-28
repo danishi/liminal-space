@@ -11,6 +11,8 @@ import { Player } from './player.js';
 import { World } from './world.js';
 import { STAGES, loadStage } from '../stages/index.js';
 
+const _fwd = new THREE.Vector3();
+
 const QUALITY = {
   low: { pr: 0.75, bloom: false, lights: 4, shadows: false, ao: false, env: 128, probeFollow: false, msaa: 0 },
   mid: { pr: 1, bloom: true, lights: 6, shadows: false, ao: true, env: 256, probeFollow: false, msaa: 4 },
@@ -418,6 +420,8 @@ export class Game {
     if (wasPaused && this.state === 'paused' && this.input.pressed('pause') && this.ui.current === 'pause') this.resume();
 
     if (this.world) {
+      // a light that is off casts nothing: don't redraw its shadow map
+      this.flashlight.shadow.autoUpdate = this.flashlight.intensity > 0;
       this.audio.updateListener(this.camera);
       this.audio.update(dt);
       this.flash = Math.max(0, this.flash - dt * 1.5);
@@ -460,6 +464,7 @@ export class Game {
       }
       const li = p.flashlight ? w.env.flashlightIntensity : 0;
       this.flashlight.intensity += (li - this.flashlight.intensity) * Math.min(1, dt * 25);
+      if (!li && this.flashlight.intensity < 1e-3) this.flashlight.intensity = 0;
     } else if (inp.pressed('flashlight')) {
       this.toast('You won’t need a light here');
     }
@@ -540,7 +545,7 @@ export class Game {
 
   findInteractable() {
     const p = this.player;
-    const fwd = p.forward(new THREE.Vector3());
+    const fwd = p.forward(_fwd);
     const cam = this.camera.position;
     let best = null;
     let bestScore = -Infinity;

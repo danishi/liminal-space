@@ -41,6 +41,7 @@ export class LightPool {
     this.mesh = null; // optional InstancedMesh of fixture panels
     this.baseColor = new THREE.Color(1, 1, 1);
     this._c = new THREE.Color();
+    this._shownBase = new THREE.Color(NaN, NaN, NaN);
   }
 
   add(fixture) {
@@ -119,12 +120,18 @@ export class LightPool {
       l.intensity += (target - l.intensity) * Math.min(1, dt * (target < l.intensity ? 30 : 8));
     }
     if (this.mesh) {
+      // re-upload the panel colours only when a fixture's level (or the base colour) changed
+      let changed = false;
+      const recolor = !this._shownBase.equals(this.baseColor);
+      if (recolor) this._shownBase.copy(this.baseColor);
       for (const f of this.fixtures) {
-        if (f.instance === undefined) continue;
+        if (f.instance === undefined || (f.level === f.shown && !recolor)) continue;
+        f.shown = f.level;
+        changed = true;
         this._c.copy(this.baseColor).multiplyScalar(0.1 + f.level * 0.9);
         this.mesh.setColorAt(f.instance, this._c);
       }
-      if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+      if (changed && this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
     }
   }
 }

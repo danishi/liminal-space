@@ -1,7 +1,10 @@
+import * as THREE from 'three';
 import { FLOOR, WATER, HOLE } from '../../core/grid.js';
 import { inView } from '../../entities/creatures.js';
 import { PI, Y_BATH, Y_SURF, Z_BATH } from './constants.js';
 import { matAt } from './geometry.js';
+
+const _y = new THREE.Matrix4();
 
 /** world.onUpdate: water, steam, buckets, yuzu, the keeper, hums, chairs, scales and apparitions. */
 export function perFrame(world, lvl) {
@@ -29,14 +32,14 @@ export function perFrame(world, lvl) {
     for (const b of buckets) {
       if (b.hop <= 0) continue;
       b.hop = Math.max(0, b.hop - dt * 3);
-      const m4 = b.base.clone();
+      const m4 = _y.copy(b.base);
       m4.elements[13] += Math.sin(b.hop * PI) * 0.08;
       batch.move(b.ref, m4);
     }
     // yuzu drift and bob
     for (const y of yuzus) {
       if (y.m.idx !== modOfPos(pz.x, pz.z)) continue;
-      batch.move(y.ref, matAt(y.x + Math.sin(t * 0.13 + y.ph) * 0.25, Y_SURF - 0.01 + Math.sin(t * 1.3 + y.ph) * 0.008, y.z + Math.cos(t * 0.11 + y.ph) * 0.25, t * 0.1 + y.ph));
+      batch.move(y.ref, matAt(y.x + Math.sin(t * 0.13 + y.ph) * 0.25, Y_SURF - 0.01 + Math.sin(t * 1.3 + y.ph) * 0.008, y.z + Math.cos(t * 0.11 + y.ph) * 0.25, t * 0.1 + y.ph, 1, 0, _y));
     }
     // the electric bath tingles
     const [ei, ej] = g.cellOf(pz.x, pz.z);

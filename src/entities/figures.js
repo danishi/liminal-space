@@ -44,7 +44,7 @@ export class Rig {
   }
 
   reset() {
-    for (const b of Object.values(this.bones)) b.quaternion.identity();
+    for (const k in this.bones) this.bones[k].quaternion.identity();
   }
 
   offset(name, x, y, z) {
@@ -517,14 +517,17 @@ export function idlePose(rig, t, { sway = 1 } = {}) {
   rig.offset('hips', 0, 0, 0);
 }
 
+const _lookP = new THREE.Vector3();
+const _lookT = new THREE.Vector3();
+const _lookInv = new THREE.Matrix4();
+
 /** Turns neck and head toward a world point (yaw/pitch split over two bones). */
 export function lookAt(fig, target, { max = 1.2, pitch = 0.5, over = 1 } = {}) {
   const rig = fig.userData.rig;
   const head = rig.bones.head;
-  const p = new THREE.Vector3();
-  head.getWorldPosition(p);
-  const inv = new THREE.Matrix4().copy(fig.matrixWorld).invert();
-  const lp = target.clone().applyMatrix4(inv);
+  const p = head.getWorldPosition(_lookP);
+  const inv = _lookInv.copy(fig.matrixWorld).invert();
+  const lp = _lookT.copy(target).applyMatrix4(inv);
   const hp = p.applyMatrix4(inv);
   const dx = lp.x - hp.x;
   const dy = lp.y - hp.y - 0.08;

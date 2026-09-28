@@ -9,6 +9,7 @@ export const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _v = new THREE.Vector3();
 const _s = new THREE.Vector3();
+const _e = new THREE.Euler();
 
 /**
  * Instanced copies of small repeated things (stools, buckets, baskets),
@@ -50,7 +51,8 @@ export class Batch {
       const im = e.meshes[k];
       im.setMatrixAt(ref.index, _m.multiplyMatrices(matrix, p.m));
       im.instanceMatrix.needsUpdate = true;
-      im.computeBoundingSphere();
+      // recomputed by the renderer's culling, once per frame however many moved
+      im.boundingSphere = null;
     });
   }
 }
@@ -103,7 +105,7 @@ export function mergeGroup(group, skip = new Set()) {
   return out;
 }
 
-export function matAt(x, y, z, yaw = 0, s = 1, rx = 0) {
-  _q.setFromEuler(new THREE.Euler(rx, yaw, 0, 'YXZ'));
-  return new THREE.Matrix4().compose(_v.set(x, y, z), _q, _s.set(s, s, s));
+export function matAt(x, y, z, yaw = 0, s = 1, rx = 0, out = new THREE.Matrix4()) {
+  _q.setFromEuler(_e.set(rx, yaw, 0, 'YXZ'));
+  return out.compose(_v.set(x, y, z), _q, _s.set(s, s, s));
 }
