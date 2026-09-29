@@ -4,7 +4,7 @@
 // colours the light behind doors that lead to one.
 export const STAGES = [
   { id: 'backrooms', code: 'LEVEL 0', name: 'The Backrooms', sub: 'Endless yellow rooms', tint: 0xfff0b0, load: () => import('./backrooms.js') },
-  { id: 'poolrooms', code: 'LEVEL 37', name: 'The Poolrooms', sub: 'Tiles, water, echoes', tint: 0xd8fbff, load: () => import('./poolrooms.js') },
+  { id: 'poolrooms', code: 'LEVEL 37', name: 'The Poolrooms', sub: 'Tiles, water, echoes', tint: 0xd8fbff, load: () => import('./poolrooms/index.js') },
   { id: 'pastel', code: 'LEVEL 3.14', name: 'Pastel Dreamscape', sub: 'Cotton-candy sky', tint: 0xffd6ee, load: () => import('./pastel.js') },
   { id: 'school', code: 'LEVEL 188', name: 'After-School Hallways', sub: '黄昏の校舎 · A school in Japan at dusk', tint: 0xffc890, load: () => import('./school.js') },
   { id: 'station', code: 'LEVEL 8', name: 'Last-Train Underpass', sub: '終電後の地下通路 · A station in Japan after the last train', tint: 0xe8fff0, load: () => import('./station.js') },

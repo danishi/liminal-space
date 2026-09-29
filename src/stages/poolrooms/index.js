@@ -1,27 +1,17 @@
 import * as THREE from 'three';
-import { Grid, FLOOR, WALL, WATER, DOORWAY, HOLE, buildWallFaces, buildCellQuads, buildFloors } from '../core/grid.js';
-import { waterNormalMap } from '../core/surfaces.js';
-import { caustics, labelTexture } from '../core/textures.js';
-import { mesh, buildShell, ceilingFixtures, doorModel, decorate } from './common.js';
-import { PropKit } from '../props/kit.js';
-import { photo, model } from '../core/assets.js';
-import * as P from '../props/library.js';
-import { NPC } from '../entities/npc.js';
-import { Watcher, Peeker, StrayCat, Mannequin } from '../entities/creatures.js';
-
-const H = 4.2;
-const LINTEL = 2.9;
-const POOL = -0.55;
-const WATER_Y = -0.12;
-
-function duckModel(scale = 1) {
-  // the scanned rubber duck is 0.29 m tall; scale 1 ≈ a real bath duck
-  const g = new THREE.Group();
-  const m = model('rubber_duck_toy');
-  m.scale.setScalar(scale * 1.6);
-  g.add(m);
-  return g;
-}
+import { Grid, FLOOR, WALL, WATER, DOORWAY, HOLE, buildWallFaces, buildCellQuads, buildFloors } from '../../core/grid.js';
+import { waterNormalMap } from '../../core/surfaces.js';
+import { caustics, labelTexture } from '../../core/textures.js';
+import { mesh, buildShell, ceilingFixtures, doorModel, decorate } from '../common.js';
+import { PropKit } from '../../props/kit.js';
+import { photo } from '../../core/assets.js';
+import * as P from '../../props/library.js';
+import { NPC } from '../../entities/npc.js';
+import { Watcher, Peeker, StrayCat, Mannequin } from '../../entities/creatures.js';
+import { H, LINTEL, POOL, WATER_Y, HALL_H } from './constants.js';
+import { duckModel } from './props.js';
+import { littleDuck } from './entities.js';
+import { planHall, carveHall, buildHall, hallResidents } from './natatorium.js';
 
 export default {
   assets: {
@@ -48,12 +38,16 @@ export default {
     }
     const idx = (rx, ry) => ry * RX + rx;
     const spawnRoom = rooms[idx(2, 2)];
+    // the natatorium: a block of rooms beside the spawn room, one tall hall around a lap pool
+    const hall = planHall(rng, rooms, spawnRoom, { RX, RS, cs });
     // some rooms are raised decks
     for (const r of rooms) {
-      if (r === spawnRoom || !rng.chance(0.3)) continue;
+      if (r === spawnRoom || hall.rooms.has(r) || !rng.chance(0.3)) continue;
       r.h = rng.pick([1.1, 2.2]);
       g.heightRect(r.i0, r.j0, r.i0 + RS - 1, r.j0 + RS - 1, r.h);
     }
+    const waterLevel = new Float32Array(W * W); // water surface over each pool cell
+    carveHall(g, hall, waterLevel);
     // connect rooms: spanning tree + loops; stairs where heights differ
     const visited = new Set([0]);
     const stack = [rooms[0]];
@@ -76,7 +70,10 @@ export default {
       if (r.rx < RX - 1 && rng.chance(0.35)) links.push([r, rooms[idx(r.rx + 1, r.ry)]]);
       if (r.ry < RX - 1 && rng.chance(0.35)) links.push([r, rooms[idx(r.rx, r.ry + 1)]]);
     }
+    // always a way from where you arrive into the hall
+    if (!links.some(([a, b]) => (a === spawnRoom && b === hall.door) || (b === spawnRoom && a === hall.door))) links.push([spawnRoom, hall.door]);
     for (const [a, b] of links) {
+      if (hall.rooms.has(a) && hall.rooms.has(b)) continue; // no walls left between them
       const wide = rng.int(2, 3);
       const off = rng.int(1, RS - wide - 1);
       const type = rng.chance(0.3) ? FLOOR : DOORWAY;
@@ -107,7 +104,7 @@ export default {
     // pools: shallow basins, some with a deep drop in the middle
     const pools = [];
     for (const r of rooms) {
-      if (r === spawnRoom || !rng.chance(0.62)) continue;
+      if (r === spawnRoom || hall.rooms.has(r) || !rng.chance(0.62)) continue;
       const pw = rng.int(3, RS - 2);
       const ph = rng.int(3, RS - 2);
       const pi = r.i0 + rng.int(1, RS - pw - 1);
@@ -117,6 +114,7 @@ export default {
           if (g.ramp[j * W + i]) continue;
           g.set(i, j, WATER);
           g.setHeight(i, j, r.h + POOL);
+          waterLevel[j * W + i] = r.h + WATER_Y;
         }
       }
       pools.push({ pi, pj, pw, ph, r });
@@ -131,6 +129,12 @@ export default {
       if (p.pw < 3 || p.ph < 3 || !rng.chance(deepChance)) continue;
       const i = p.pi + (p.pw >> 1);
       const j = p.pj + (p.ph >> 1);
+      g.set(i, j, HOLE);
+      deep.add(j * W + i);
+    }
+    // the lap pool's drain opens up further in
+    if (world.depth >= 1 && rng.chance(deepChance)) {
+      const [i, j] = hall.drain;
       g.set(i, j, HOLE);
       deep.add(j * W + i);
     }
@@ -154,7 +158,8 @@ export default {
     for (const r of rooms) {
       for (let j = r.j0 - 1; j <= r.j0 + RS; j++) for (let i = r.i0 - 1; i <= r.i0 + RS; i++) ceilArr[j * W + i] = Math.max(ceilArr[j * W + i], r.h + H);
     }
-    const surface = (i, j) => g.hgt[j * W + i] - POOL + WATER_Y;
+    for (let j = hall.j0; j <= hall.j1; j++) for (let i = hall.i0; i <= hall.i1; i++) ceilArr[j * W + i] = HALL_H;
+    const surface = (i, j) => waterLevel[j * W + i];
     buildShell(world, {
       height: H,
       ceil: (i, j) => ceilArr[j * W + i],
@@ -177,12 +182,16 @@ export default {
     ceilingFixtures(world, {
       type: 'rect', every: 3, offset: 2, size: [1.6, 1.6], color: 0xf2ffff, panelColor: [2.2, 2.3, 2.3],
       intensity: 11, distance: 14, flicker: 0, dead: 0.02,
+      // the hall is lit through its skylights
+      filter: (c, i, j) => !hall.contains(i, j),
     });
 
     const kit = new PropKit(world);
+    const updateHall = buildHall(world, kit, hall, murk);
     decorate(world, kit, {
       density: { wall: 0.12, high: 0.04, floor: 0.05, clutter: 0.08, ceil: 0 },
       waterSurface: surface,
+      keepClear: (i, j) => hall.reserved.has(j * W + i),
       wall: [
         { p: P.towelStack, w: 2 }, { p: P.modelProp('potted_plant_02'), w: 2.5 }, { p: P.pottedPalm, w: 1 }, { p: P.bench, w: 1 },
         { p: P.lockers, w: 1.2, o: { color: 0x7fb8c8 } }, { p: P.modelProp('plastic_monobloc_chair_01', { jitter: 0.3 }), w: 1.5 },
@@ -214,56 +223,15 @@ export default {
       t += dt;
       nMap.offset.set(t * 0.02, t * 0.013);
       causticMap.offset.set(Math.sin(t * 0.2) * 0.1 + t * 0.01, t * 0.015);
+      updateHall(t);
     };
 
-    // residents: a big floating duck, and little ducks that squeak
-    const bigPool = pools.filter((p) => p.pw >= 3 && p.ph >= 3).sort((a, b) => Math.abs(a.r.rx - 2) + Math.abs(a.r.ry - 2) - (Math.abs(b.r.rx - 2) + Math.abs(b.r.ry - 2)))[0];
-    if (bigPool) {
-      const cx = (bigPool.pi + bigPool.pw / 2) * cs;
-      const cz = (bigPool.pj + bigPool.ph / 2) * cs;
-      const base = bigPool.r.h + WATER_Y - 0.08;
-      const model = duckModel(3.2);
-      model.position.set(cx + cs * 0.5, base, cz);
-      const duck = new NPC(world, {
-        name: 'the Big Duck',
-        pos: model.position.clone(),
-        model,
-        voice: 1.6,
-        radius: 1.0,
-        conversations: [
-          ['Bob... bob...', 'Welcome to the water rooms. Quiet, bright, and always the same afternoon.', 'Mind the deep ends. Sink into one and you come up somewhere else entirely.'],
-          ['Nothing scary lives here. ...Probably.', 'Stay too long, though, and you stop wanting to leave. Maybe that is the scariest part.'],
-          ['Bob.'],
-        ],
-        onTalk: (game) => game.audio.squeak(),
-      });
-      duck.idle = () => {
-        duck.object.position.y = base + Math.sin(duck.t * 1.3) * 0.05;
-        duck.object.rotation.z = Math.sin(duck.t * 0.9) * 0.05;
-      };
-      world.add(duck);
-    }
+    // residents: the Giant Duck and its ducklings in the lap pool, and little ducks that squeak
+    hallResidents(world, hall);
     for (const p of pools.slice(0, 7)) {
-      const model = duckModel(0.62);
       const x = (p.pi + rng.float(0.3, p.pw - 0.3)) * cs;
       const z = (p.pj + rng.float(0.3, p.ph - 0.3)) * cs;
-      const baseY = p.r.h + WATER_Y - 0.06;
-      model.position.set(x, baseY, z);
-      model.rotation.y = rng.float(0, Math.PI * 2);
-      const little = new NPC(world, { name: 'a duck', pos: model.position.clone(), model, radius: 0, face: false, marker: false, prompt: 'Poke the duck', conversations: [[]] });
-      little.interactRange = 2.2;
-      little.aimHeight = 0.1;
-      little.interact = (game) => {
-        game.audio.squeak();
-        little.hop = 1;
-      };
-      little.hop = 0;
-      little.idle = (dt) => {
-        little.hop = Math.max(0, little.hop - dt * 2.5);
-        model.position.y = baseY + Math.sin(little.t * 1.7) * 0.02 + Math.sin(little.hop * Math.PI) * 0.25;
-        model.rotation.y += dt * 0.1;
-      };
-      world.add(little);
+      world.add(littleDuck(world, new THREE.Vector3(x, p.r.h + WATER_Y - 0.06, z), rng.float(0, Math.PI * 2)));
     }
     if (!world.attract && world.depth >= 2) world.add(new Watcher(world, { look: { body: 0x1a2426 } }));
     if (!world.attract) {

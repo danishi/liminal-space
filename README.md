@@ -66,7 +66,8 @@ a light probe.
 - Residents: the Drifter (asleep in a hazmat suit, snoring through the mask), a ghostly bellboy who
   bows, a station attendant who bows properly, students made of dusk, a white fox that sits like a
   shrine statue, a mall guard asleep on the job, a parking attendant, a bathhouse keeper and his
-  capybaras. Residents of one level sometimes wander into another through a crossed signal, and are
+  capybaras, and a giant rubber duck in the Poolrooms' lap pool that turns to keep you in view (deeper
+  in, only while you aren't looking). Residents of one level sometimes wander into another through a crossed signal, and are
   not happy about it.
 
 ## Levels
@@ -74,7 +75,7 @@ a light probe.
 | Code | Level | Mood | Residents and things |
 | --- | --- | --- | --- |
 | LEVEL 0 | The Backrooms | Sterile, uneasy | The Drifter, a ringing phone, a tall figure at the ends of hallways |
-| LEVEL 37 | The Poolrooms | Bright, calm | The Big Duck, little ducks you can poke, deep ends you can sink into |
+| LEVEL 37 | The Poolrooms | Bright, calm | A skylit hall with a 25 m lap pool and a six-metre Giant Duck afloat in it (with ducklings), little ducks you can poke, deep ends you can sink into |
 | LEVEL 3.14 | Pastel Dreamscape | Bright, whimsical | Mochi residents, holes that open onto the sky |
 | LEVEL 188 | After-School Hallways 黄昏の校舎 | Nostalgic (Japan) | Students who stayed behind; after the chime, someone walks the halls |
 | LEVEL 8 | Last-Train Underpass 終電後の地下通路 | Fluorescent, empty (Japan) | The station attendant; don't step onto the tracks |

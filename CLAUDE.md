@@ -51,8 +51,9 @@ seeded right before `buildWorld` (three.js draws uuids from it, and a few canvas
   load }` and is the only stage code in the main bundle. `loadStage(i)` imports the level's module and
   merges its definition into the entry, so always go through it before touching `assets`, `build` etc.
 - `src/stages/*.js`, `src/stages/<level>/index.js` — one module per level (mall, garage and bathhouse are
-  folders: `constants`, `textures`, `props`, `entities`, then one file per build phase). The module's
-  default export is `{ assets, build(world), makeDoor(world, destStage), bleed?, … }` (destStage may not
+  folders: `constants`, `textures`, `props`, `entities`, then one file per build phase; poolrooms is a
+  smaller folder whose `index.js` builds the rooms and calls `natatorium.js` for the lap-pool hall, sharing
+  a `hall` plan object). The module's default export is `{ assets, build(world), makeDoor(world, destStage), bleed?, … }` (destStage may not
   be loaded: only use its registry fields such as `tint`). In `build`, carve the grid, set `world.spawn`,
   call `world.finalizeLayout()` (seals unreachable pockets and computes distances), then build geometry,
   lights, props (`decorate` with a prop table), residents and apparitions, and fill `world.env`. In a
