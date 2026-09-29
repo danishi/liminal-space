@@ -34,16 +34,22 @@ function write(key, value) {
   }
 }
 
-/** Phones and tablets (a coarse pointer), which also get far less memory per tab. */
-export function coarsePointer() {
-  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+/**
+ * Phones and tablets, which also get far less memory per tab: a coarse pointer,
+ * or an iPad with a trackpad (Safari on iPadOS says it is a Mac, and Macs have
+ * no touch points).
+ */
+export function mobileDevice() {
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const iPad = typeof navigator !== 'undefined' && /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+  return coarse || iPad;
 }
 
 export function loadSettings() {
   const stored = read(SETTINGS_KEY) || {};
   const s = { ...DEFAULT_SETTINGS, ...stored };
   // First run: pick a sensible default for phones.
-  if (!stored.quality) s.quality = coarsePointer() ? 'low' : 'mid';
+  if (!stored.quality) s.quality = mobileDevice() ? 'low' : 'mid';
   return s;
 }
 

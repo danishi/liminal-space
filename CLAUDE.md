@@ -80,11 +80,14 @@ seeded right before `buildWorld` (three.js draws uuids from it, and a few canvas
 - `src/core/cache.js` — memory between levels. Loaded assets, keyed `canvasTexture`s and surfaces live
   in `SessionCache`s; before a level loads, `Game.loadLevels` keeps what the level lists in `assets`
   and trims the rest, least recently used first, to `CACHE_BUDGET` (game.js), or to nothing on phones
-  (coarse pointer): iOS kills a tab that goes over its memory limit ("A problem repeatedly occurred").
-  The old level is disposed before the next one loads, so two levels are never in memory together.
-  On phones and at low quality the texture detail is 0.5: asset textures, HDRIs and surfaces are
-  scaled down as they load, and `canvasTexture(…, { shrink: true })` does the same for big canvases
-  that are painted in absolute pixels.
+  and tablets (`mobileDevice()` in settings.js): iOS kills a tab that goes over its memory limit ("A
+  problem repeatedly occurred"). The old level is disposed before the next one loads (and the map and
+  the renderer's lists let go of it), so two levels are never in memory together. Module-level caches
+  of things made from cached assets must follow them (key by `loadedModel(id)`, or check the texture
+  is still the cached one) rather than keep an evicted copy alive. On phones, tablets and at low
+  quality the texture detail is 0.5: asset textures (except colour maps with alpha), HDRIs and surfaces
+  are scaled down as they load, and `canvasTexture(…, { shrink: true })` does the same for big
+  canvases that are painted in absolute pixels.
 - `src/core/surfaces.js` — procedural PBR surfaces (colour + normal + roughness), cached by key.
 - `src/core/sculpt.js` — SDF sculpting: a `Sculpt` collects primitives (`sphere`, `ellipsoid`, `cone`
   (round cone), `box`, `cyl`, `torus`, with `k` blend, `bone`, `mat` paint region, `cut`, `rot`, `clip`,

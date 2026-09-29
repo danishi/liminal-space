@@ -69,14 +69,24 @@ function loadTextureSet(id) {
   });
 }
 
-const MAP_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'];
-
 function modelTextures(root) {
   const out = new Set();
   root.traverse((o) => {
     if (!o.isMesh) return;
     for (const mt of Array.isArray(o.material) ? o.material : [o.material]) {
-      for (const k of MAP_KEYS) if (mt[k]) out.add(mt[k]);
+      for (const k in mt) if (mt[k]?.isTexture) out.add(mt[k]);
+    }
+  });
+  return out;
+}
+
+/** Colour maps whose alpha is used: a 2D canvas would premultiply them, darkening cut-out edges. */
+function alphaImages(root) {
+  const out = new Set();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const mt of Array.isArray(o.material) ? o.material : [o.material]) {
+      if ((mt.transparent || mt.alphaTest > 0) && mt.map) out.add(mt.map.image);
     }
   });
   return out;
@@ -119,7 +129,8 @@ function loadModel(id) {
     const textures = modelTextures(root);
     const d = textureDetail();
     const small = new Map();
-    if (d < 1) for (const t of textures) if (t.image && !small.has(t.image)) small.set(t.image, shrinkImage(t.image, d));
+    const keep = alphaImages(root);
+    if (d < 1) for (const t of textures) if (t.image && !keep.has(t.image) && !small.has(t.image)) small.set(t.image, shrinkImage(t.image, d));
     const images = new Set();
     for (const t of textures) {
       if (small.has(t.image)) t.image = small.get(t.image);
@@ -218,11 +229,16 @@ export function hasModel(id) {
   return cache.has(`model:${id}`);
 }
 
-/** A clone of a preloaded model (geometry and materials are shared). */
-export function model(id) {
+/** The cached model itself, not a clone: a key for caches of things made from it. */
+export function loadedModel(id) {
   const m = cache.get(`model:${id}`);
   if (!m) throw new Error(`model not preloaded: ${id}`);
-  return m.clone(true);
+  return m;
+}
+
+/** A clone of a preloaded model (geometry and materials are shared). */
+export function model(id) {
+  return loadedModel(id).clone(true);
 }
 
 export function modelSize(id) {

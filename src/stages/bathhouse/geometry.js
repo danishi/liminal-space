@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { model } from '../../core/assets.js';
+import { loadedModel } from '../../core/assets.js';
 
 // ---------------------------------------------------------------------------
 // Geometry helpers
@@ -60,19 +60,22 @@ export class Batch {
   }
 }
 
-const partCache = new Map();
+// loaded model → scale → parts, so the parts go when the asset cache drops the model
+const partCache = new WeakMap();
 /** Meshes of a preloaded model with their transforms (for instancing). */
 export function modelParts(id, scale = 1) {
-  const key = `${id}:${scale}`;
-  if (partCache.has(key)) return partCache.get(key);
-  const m = model(id);
+  const src = loadedModel(id);
+  if (!partCache.has(src)) partCache.set(src, new Map());
+  const byScale = partCache.get(src);
+  if (byScale.has(scale)) return byScale.get(scale);
+  const m = src.clone(true);
   m.scale.setScalar(scale);
   m.updateMatrixWorld(true);
   const parts = [];
   m.traverse((o) => {
     if (o.isMesh) parts.push({ geo: o.geometry, mat: o.material, m: o.matrixWorld.clone() });
   });
-  partCache.set(key, parts);
+  byScale.set(scale, parts);
   return parts;
 }
 
