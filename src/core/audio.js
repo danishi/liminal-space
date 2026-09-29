@@ -309,23 +309,25 @@ export class AudioEngine {
     this.tone({ type: 'square', f: 420 * pitch * (0.95 + Math.random() * 0.1), d: 0.035, peak: 0.018, send: 0.05 });
   }
 
-  squeak(p) {
+  /** A rubber duck's squeak; lower `pitch` for bigger ducks (they squeak longer too). */
+  squeak(p, pitch = 1) {
     if (!this.ready) return;
     const t = this.now;
+    const len = 1 / Math.sqrt(pitch);
     const o = this.ctx.createOscillator();
     o.type = 'square';
-    o.frequency.setValueAtTime(900, t);
-    o.frequency.linearRampToValueAtTime(1500, t + 0.08);
-    o.frequency.linearRampToValueAtTime(800, t + 0.25);
+    o.frequency.setValueAtTime(900 * pitch, t);
+    o.frequency.linearRampToValueAtTime(1500 * pitch, t + 0.08 * len);
+    o.frequency.linearRampToValueAtTime(800 * pitch, t + 0.25 * len);
     const f = this.ctx.createBiquadFilter();
     f.type = 'bandpass';
-    f.frequency.value = 1400;
+    f.frequency.value = 1400 * pitch;
     f.Q.value = 3;
     const g = this.ctx.createGain();
-    this.env(g, t, 0.02, 0.25, 0.25);
+    this.env(g, t, 0.02, 0.25 * len, 0.25);
     o.connect(f).connect(g).connect(p || this.sfxBus);
     o.start(t);
-    o.stop(t + 0.35);
+    o.stop(t + 0.35 * len);
   }
 
   boop(p, pitch = 1) {
