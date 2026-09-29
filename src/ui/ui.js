@@ -149,6 +149,7 @@ export class UI {
 
   drawMaps(world, player) {
     if (!this.mem || this.mem.world !== world) this.mem = new MapMemory(world);
+    for (const k of world.collapse?.takeFallen() || []) this.mem.fall(k);
     if (this.mem !== this.mapMem) {
       this.mapMem = this.mem;
       this.minimapView = this.bigMapView = null;

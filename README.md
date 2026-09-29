@@ -22,7 +22,14 @@ with the Web Audio API, and the photo-scanned textures and models are CC0 assets
 - **Choose a level** on the title screen to start in a particular one, and optionally deeper in (as if
   you had already drifted a few times). From there you drift at random as usual.
 - You leave a level when its **signal** (top right) fades out, when you walk through a **door that hums**
-  (the light behind it hints at where it leads), or when you **fall into a hole**.
+  (the light behind it hints at where it leads), or when you **fall**: into a hole, or through a floor
+  that gives way.
+- **Levels come apart.** As the signal fades, the level crumbles from its far edges toward you: cracks
+  run across the floor, walls and ceiling, lights stutter, grit sifts down, then whole stretches drop
+  into the void and their pieces tumble after them. When the signal is gone, so is the floor under your
+  feet. Before that, cracked patches of floor give way a moment after you step on them, and now and
+  then a rumble takes out a stretch of level nearby, usually behind you. The deeper you go, the more of
+  both. Residents, apparitions and doors caught in it fall too.
 - Levels have height: stairs, sunken rooms, raised decks, platforms and pits.
 - **Unease** grows with every level you pass through and with distance from where you arrived. The
   deeper you go, the more cluttered and wrong things get: more props and stranger ones, dead and
@@ -115,6 +122,9 @@ inverted look, head bob, reduced screen effects, FPS counter) are saved in the b
 - Rectangular area lights for fluorescent panels, pooled so only the nearest fixtures are real lights
 - AgX / neutral tone mapping, bloom, and a camcorder pass (grain, vignette, chromatic aberration)
 - Static props are merged per material, so hundreds of props cost only a few draw calls
+- Collapse: every level material looks its grid cell up in a small data texture, so cells crack,
+  shiver and vanish with ragged edges; the debris is instanced slabs of the real floor, wall and
+  ceiling materials
 
 ## Credits
 
@@ -141,7 +151,7 @@ src/
   core/      grid (2.5D height field), SDF sculpting (surface nets, auto skinning), procedural
              surfaces and textures, audio, input, post-processing, light pool
   game/      game loop and drifting, player (steering assist, gravity), world (collision, unease, doors),
-             crossed signals (levels bleeding into each other)
+             crossed signals (levels bleeding into each other), collapse (levels coming apart) and debris
   entities/  sculpted characters (figures: humanoid and quadruped rigs, poses; looks: the cast),
              residents (NPC), doors to other levels, apparitions
   props/     prop kit (batched merging), prop library, canvas-painted signs and posters

@@ -616,6 +616,79 @@ export class AudioEngine {
     this.burst({ type: 'highpass', freq: 3000, t, a: 0.001, d: 0.15, peak: 0.1 * level, send: 0.2 });
   }
 
+  /** Floor giving way at panner `p`: a crack, a heavy drop, then grit rattling away below. */
+  crumble(p, size = 1) {
+    if (!this.ready) return;
+    const t = this.now;
+    this.burst({ type: 'bandpass', freq: 1400, q: 0.9, t, a: 0.002, d: 0.09, peak: 0.3 * size, send: 0.4, dest: p });
+    this.burst({ type: 'lowpass', freq: 380, q: 0.8, t: t + 0.02, a: 0.01, d: 0.7 * size, peak: 0.55 * size, send: 0.6, dest: p, sweep: 70 });
+    this.tone({ f: 75, f2: 30, t: t + 0.02, d: 0.45, peak: 0.45 * size, send: 0.3, dest: p });
+    for (let i = 0; i < 7; i++) {
+      const tt = t + 0.08 + Math.random() * 0.9;
+      this.burst({ type: 'bandpass', freq: 900 + Math.random() * 2600, q: 2.5, t: tt, a: 0.001, d: 0.025, peak: 0.1 * size * (1 - (tt - t) / 1.1), send: 0.7, dest: p });
+    }
+  }
+
+  /** Concrete under strain at panner `p`: a low groan bending down, and a few ticks. */
+  creak(p, loud = 1) {
+    if (!this.ready) return;
+    const t = this.now;
+    const o = this.ctx.createOscillator();
+    o.type = 'sawtooth';
+    const f0 = 55 + Math.random() * 40;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.linearRampToValueAtTime(f0 * 0.7, t + 1.1);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 320;
+    bp.Q.value = 5;
+    const g = this.ctx.createGain();
+    this.env(g, t, 0.2, 0.9, 0.22 * loud);
+    o.connect(bp).connect(g);
+    this.out(g, { send: 0.5, dest: p });
+    o.start(t);
+    o.stop(t + 1.2);
+    for (let i = 0; i < 4; i++) this.burst({ type: 'highpass', freq: 2500, t: t + 0.1 + Math.random() * 0.8, a: 0.001, d: 0.02, peak: 0.08 * loud, send: 0.4, dest: p });
+  }
+
+  /** A low rolling rumble under everything while a level comes apart (0..1). */
+  setRumble(level) {
+    if (!this.ready) return;
+    if (!this.rumbleGain) {
+      const ctx = this.ctx;
+      this.rumbleGain = ctx.createGain();
+      this.rumbleGain.gain.value = 0;
+      this.rumbleGain.connect(this.musicBus);
+      const n = this.noise();
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 110;
+      lp.Q.value = 0.9;
+      const ng = ctx.createGain();
+      ng.gain.value = 1.4;
+      n.connect(lp).connect(ng).connect(this.rumbleGain);
+      n.start();
+      // it rolls rather than hisses
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.7;
+      const lg = ctx.createGain();
+      lg.gain.value = 0.5;
+      lfo.connect(lg).connect(ng.gain);
+      lfo.start();
+      const sub = ctx.createOscillator();
+      sub.frequency.value = 31;
+      const sg = ctx.createGain();
+      sg.gain.value = 0.3;
+      sub.connect(sg).connect(this.rumbleGain);
+      sub.start();
+    }
+    const v = Math.min(1, level) * 0.5;
+    if (Math.abs(v - (this._rumbleSent ?? -1)) < 1e-3) return;
+    const rising = v > (this._rumbleSent ?? 0);
+    this._rumbleSent = v;
+    this.rumbleGain.gain.setTargetAtTime(v, this.now, rising ? 0.15 : 0.6);
+  }
+
   // ---- fear & heartbeat ------------------------------------------------------
 
   setFear(level) {

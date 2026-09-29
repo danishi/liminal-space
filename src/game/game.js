@@ -69,6 +69,7 @@ export class Game {
     this.time = 0;
     this.totalTime = 0;
     this.fear = 0;
+    this.shake = 0;
     this.flash = 0;
     this.staticLevel = 0;
     this.staticPulse = 0;
@@ -166,6 +167,7 @@ export class Game {
     this.captureEnvironment(world);
     this.attractPath = null;
     this.fear = 0;
+    this.shake = 0;
     this.staticLevel = 0;
     this.warnedSignal = false;
     return world;
@@ -287,6 +289,7 @@ export class Game {
     this.drifting = true;
     this.closeDialog();
     this.state = 'drifting';
+    this.audio.setRumble(0);
     if (how !== 'start') this.audio.driftSound(how === 'fall' ? 'fall' : 'door');
     await this.ui.fadeOut(how === 'fall' || how === 'time');
     // the screen is black now: stop drawing the old level while the next one loads
@@ -378,6 +381,7 @@ export class Game {
     this.closeDialog();
     this.audio.setDucked(false);
     this.audio.setFear(0);
+    this.audio.setRumble(0);
     await this.ui.fadeOut();
     this.loading = true;
     await this.showTitle();
@@ -489,6 +493,7 @@ export class Game {
       this.drift(null, 'fall');
       return;
     }
+    this.shakeCamera(dt);
 
     // flashlight (no battery: it's your camcorder light)
     if (w.env.flashlight) {
@@ -514,13 +519,15 @@ export class Game {
       else if (target) target.interact(this);
     }
 
-    // the signal: when it fades you drift on
+    // the signal: as it fades the level comes apart around you (collapse.js)
+    // and the floor under you goes last; if you're somehow still standing a
+    // moment after it's gone, you drift on anyway
     w.timeLeft -= dt;
-    if (w.timeLeft < 18 && !this.warnedSignal) {
+    if (w.timeLeft < (w.collapse ? w.collapse.window : 18) && !this.warnedSignal) {
       this.warnedSignal = true;
-      this.toast('The signal is fading…', 'Soon you will drift somewhere else');
+      this.toast('The signal is fading…', w.collapse ? 'This place is coming apart' : 'Soon you will drift somewhere else');
     }
-    if (w.timeLeft <= 0) {
+    if (w.timeLeft <= (w.collapse ? -4 : 0)) {
       this.drift(null, 'time');
       return;
     }
@@ -533,9 +540,9 @@ export class Game {
     this.fear += (target_ - this.fear) * Math.min(1, dt * 1.5);
     this.audio.setFear(this.fear);
     this.desat = Math.min(0.5, Math.max(0, unease - 0.6) * 0.5);
-    const fade = w.timeLeft < 18 ? (1 - w.timeLeft / 18) : 0;
+    const fade = w.timeLeft < 18 ? Math.min(1, 1 - w.timeLeft / 18) : 0;
     const bl = w.bleedLevel;
-    this.staticLevel = Math.max(0, this.fear - 0.8) * 0.4 + fade * fade * 0.55 + (Math.random() < unease * 0.004 ? 0.35 : 0) + bl * 0.04 + (Math.random() < bl * 0.015 ? 0.3 : 0);
+    this.staticLevel = Math.max(0, this.fear - 0.8) * 0.4 + fade * fade * (w.collapse ? 0.3 : 0.55) + (Math.random() < unease * 0.004 ? 0.35 : 0) + bl * 0.04 + (Math.random() < bl * 0.015 ? 0.3 : 0);
     this.updateBleed(dt, bl);
 
     // on high quality the reflection probe follows you around
@@ -545,6 +552,20 @@ export class Game {
 
     this.ui.updateHud(this);
     this.ui.drawMaps(w, p);
+  }
+
+  /** The ground shaking while a level comes apart (collapse.js sets `shake`). */
+  shakeCamera(dt) {
+    this.shake = Math.max(0, this.shake - dt * 1.2);
+    if (this.shake < 1e-3) return;
+    const k = Math.min(1, this.shake) * (this.settings.reduceEffects ? 0.25 : 1);
+    const t = this.time;
+    const cam = this.camera;
+    cam.position.x += (Math.sin(t * 43.1) + Math.sin(t * 27.7)) * 0.008 * k;
+    cam.position.y += (Math.sin(t * 37.3 + 1.7) + Math.sin(t * 51.9)) * 0.008 * k;
+    cam.position.z += (Math.sin(t * 33.7 + 0.6) + Math.sin(t * 19.1)) * 0.008 * k;
+    cam.rotation.x += Math.sin(t * 31.9 + 0.4) * 0.006 * k;
+    cam.rotation.z += Math.sin(t * 23.3 + 2.1) * 0.009 * k;
   }
 
   /** Crossed signals: the other level's sound, a garbled HUD, and a note the first time. */
