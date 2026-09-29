@@ -4,6 +4,7 @@ import { wallMounts, WATER, HOLE, DIRS } from '../core/grid.js';
 import { DriftDoor } from '../entities/door.js';
 import { bakeWorld } from '../core/bake.js';
 import { applyBleed, updateBleed } from './bleed.js';
+import { Collapse } from './collapse.js';
 
 const STEP_UP = 0.55;
 // integer key for a grid cell (i, j) in the prop-box hash, valid for |j| < 32768
@@ -72,12 +73,15 @@ export class World {
     this.bleedZones = [];
     this.bleedLevel = 0;
     this.bleedZone = null;
+    // the level coming apart (see collapse.js)
+    this.collapse = null;
 
     stage.build(this);
     if (!this.distFromSpawn) this.finalizeLayout();
     if (bleed.length) applyBleed(this);
     if (!attract) this.placeDoors(stage.doorCount ?? 2);
     if (this.env.bake !== false) this.bake();
+    if (!attract && this.env.collapse !== false) this.collapse = new Collapse(this);
   }
 
   /** Bakes fixture light and ambient occlusion into the level's geometry. */
@@ -306,6 +310,8 @@ export class World {
   }
 
   update(dt, ctx) {
+    // first, so whatever falls this frame isn't updated where it stood
+    this.collapse?.update(dt, ctx);
     if (this.bleedZones.length) {
       const b = updateBleed(this, dt, ctx.player.pos);
       this.bleedLevel = b.level;

@@ -43,6 +43,18 @@ export class MapMemory {
     }
   }
 
+  /** A cell that has fallen away (collapse.js) shows as a hole, if it's on the map. */
+  fall(k) {
+    if (!this.explored[k]) return;
+    const w = this.world.grid.w;
+    const i = k % w;
+    const j = (k / w) | 0;
+    this.ctx.clearRect(i * K, j * K, K, K);
+    this.ctx.fillStyle = 'rgba(0,0,0,0.9)';
+    this.ctx.fillRect(i * K, j * K, K, K);
+    this.version++;
+  }
+
   isExplored(x, z) {
     const g = this.world.grid;
     const [i, j] = g.cellOf(x, z);

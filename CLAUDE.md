@@ -91,6 +91,15 @@ seeded right before `buildWorld` (three.js draws uuids from it, and a few canvas
   overlays a donor's surfaces (glitch-discard shader), props and a stray resident in a zone before
   baking. Stages opt in with a `bleed` block: `{ ambience, looks, surfaces() → { wall, floor, ceil } (each a
   material or { mat, uv }), props (decorate spec), stray(world, pos) → entity }`.
+- `src/game/collapse.js` — levels coming apart, cell by cell: the signal's last half minute crumbles the
+  level from its far edges toward the player (the floor under them goes last, which ends the level as a
+  fall), cracked floor patches give way when stepped on, and quakes drop a stretch nearby. A cell warns
+  (cracks, shiver, flickering fixtures), then becomes `HOLE` in the grid. `patchCollapse` adds a lookup
+  into a per-cell data texture (R crack, G shiver, B solid, A gone) to every level material (and the GTAO
+  normal pre-pass) and discards what's gone; its uniforms are module-level, like the bake's, so shared
+  materials follow the current level. Small entities (residents, apparitions, doors) aren't patched and
+  fall whole instead. `debris.js` holds the falling chunks (instanced copies of the cell's floor, wall
+  and ceiling materials) and dust. Stages opt out with `world.env.collapse = false`.
 - `src/core/bake.js` — per-vertex baked lighting and AO (`bake` attribute, applied through a material
   shader patch). `World.bake()` runs after `stage.build`; light pool fixtures are sources automatically,
   extra sources go in `world.bakeSources`, and `world.env.bake` tunes it (`hemi`, `dynamic`, `bounce`,
