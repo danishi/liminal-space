@@ -1,11 +1,13 @@
 import * as THREE from 'three';
 import { hash2 as hash } from './rng.js';
+import { SessionCache } from './cache.js';
+import { shrinkImage, textureDetail } from './textures.js';
 
 // Procedural PBR surfaces. Each painter fills a colour canvas plus height and
 // roughness fields; the height field becomes a tangent-space normal map.
-// Results are cached by key and shared between materials.
+// Results are kept by key in a session cache and shared between materials.
 
-const cache = new Map();
+const cache = new SessionCache();
 let aniso = 8;
 
 export function setSurfaceAnisotropy(n) {
@@ -159,16 +161,18 @@ export function surface(key, size, paint, { normal = 2.5, rough = 0.8 } = {}) {
   nctx.putImageData(nImg, 0, 0);
   rctx.putImageData(rImg, 0, 0);
 
-  const mk = (c, srgb) => {
+  // painted at full size, kept at the texture detail
+  const d = textureDetail();
+  const mk = (full, srgb) => {
+    const c = d < 1 ? shrinkImage(full, d) : full;
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.anisotropy = aniso;
     if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-    t.userData.cached = true;
     return t;
   };
   const set = { map: mk(colorCanvas, true), normalMap: mk(nCanvas, false), roughnessMap: mk(rCanvas, false) };
-  cache.set(key, set);
+  cache.set(key, set, size * size * 12 * d * d, (s) => Object.values(s).forEach((t) => t.dispose()));
   return set;
 }
 

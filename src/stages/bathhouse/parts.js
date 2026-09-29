@@ -7,7 +7,13 @@ import { bucketTexture } from './textures.js';
 let bucketParts = null;
 /** The yellow ad-printed bath bucket: a lathe body and a printed band. */
 export function bathBucketParts() {
-  if (bucketParts) return bucketParts;
+  // rebuilt when the texture cache has let the print go and painted it again
+  const printTex = bucketTexture();
+  if (bucketParts?.[1].mat.map === printTex) return bucketParts;
+  for (const p of bucketParts || []) {
+    p.geo.dispose();
+    p.mat.dispose();
+  }
   const pts = [
     [0, 0.004], [0.098, 0.0], [0.104, 0.004], [0.106, 0.014], [0.118, 0.1], [0.123, 0.104], [0.123, 0.112],
     [0.118, 0.115], [0.113, 0.11], [0.101, 0.02], [0.094, 0.013], [0, 0.013],
@@ -17,7 +23,7 @@ export function bathBucketParts() {
   const yellow = new THREE.MeshStandardMaterial({ color: 0xf2c418, roughness: 0.32 });
   const band = new THREE.CylinderGeometry(0.1172, 0.1093, 0.055, 28, 1, true);
   band.translate(0, 0.058, 0);
-  const print = new THREE.MeshStandardMaterial({ map: bucketTexture(), transparent: true, alphaTest: 0.4, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -1 });
+  const print = new THREE.MeshStandardMaterial({ map: printTex, transparent: true, alphaTest: 0.4, roughness: 0.35, polygonOffset: true, polygonOffsetFactor: -1 });
   const I = new THREE.Matrix4();
   bucketParts = [{ geo: body, mat: yellow, m: I }, { geo: band, mat: print, m: I }];
   for (const p of bucketParts) {

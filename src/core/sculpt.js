@@ -809,7 +809,6 @@ export function eyeball(r, { iris = 0x3a2a1c, glow = null, pupil = 0.45 } = {}) 
     x.fill();
     tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.userData.cached = true;
     cache.set(key, tex);
   }
   const geo = new THREE.SphereGeometry(r, 18, 14);

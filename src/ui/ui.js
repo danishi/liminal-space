@@ -96,9 +96,7 @@ export class UI {
     this.hudEl.hidden = !on;
     $('touch').hidden = !on || !this.touchOn;
     if (!on) {
-      // the map memory holds the whole level; let it go with the HUD
-      this.mem = this.mapMem = null;
-      this.minimapView = this.bigMapView = null;
+      this.forgetLevel();
       this.dialog(null);
       this.toggleBigMap(false);
       this.setPrompt(null);
@@ -113,6 +111,12 @@ export class UI {
       this.toastsEl.innerHTML = '';
       this.minimapWrap.hidden = !this.showMinimap;
     }
+  }
+
+  /** The map memory holds the whole level: lets it go (with the HUD, or when the level is disposed). */
+  forgetLevel() {
+    this.mem = this.mapMem = null;
+    this.minimapView = this.bigMapView = null;
   }
 
   /** Briefly shows another level's name in the HUD, garbled, then puts ours back. */

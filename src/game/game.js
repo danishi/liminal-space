@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { PostFX } from '../core/postfx.js';
 import { AudioEngine } from '../core/audio.js';
 import { Input } from '../core/input.js';
-import { setMaxAnisotropy } from '../core/textures.js';
+import { setMaxAnisotropy, setTextureDetail, textureDetail } from '../core/textures.js';
 import { setSurfaceAnisotropy } from '../core/surfaces.js';
-import { preload, prefetch, setAssetAnisotropy } from '../core/assets.js';
+import { preload, prefetch, retainAssets, setAssetAnisotropy } from '../core/assets.js';
+import { nextCacheLevel, trimCaches, clearCaches } from '../core/cache.js';
+import { mobileDevice } from '../core/settings.js';
 import { prewarm } from '../entities/looks.js';
 import { pickBleed } from './bleed.js';
 import { Player } from './player.js';
@@ -18,6 +20,11 @@ const QUALITY = {
   mid: { pr: 1, bloom: true, lights: 6, shadows: false, ao: true, env: 256, probeFollow: false, msaa: 4 },
   high: { pr: 1.5, bloom: true, lights: 8, shadows: true, ao: true, env: 256, probeFollow: true, msaa: 4 },
 };
+
+// What the session caches may keep from earlier levels (rough bytes, see
+// core/cache.js). Phones get far less memory per tab and iOS kills a tab that
+// goes over, so there they keep only what the next level lists.
+const CACHE_BUDGET = 768 * 1024 * 1024;
 
 /**
  * Owns the renderer, the loop and the drift between levels:
@@ -35,6 +42,7 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.AgXToneMapping;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.mobile = mobileDevice();
     const aniso = this.renderer.capabilities.getMaxAnisotropy();
     setMaxAnisotropy(aniso);
     setSurfaceAnisotropy(aniso);
@@ -115,6 +123,13 @@ export class Game {
     this.post.reduce = s.reduceEffects;
     this.ui.setFpsVisible(s.showFps);
     this.ui.setMinimap(!!s.minimap);
+    // phones and low quality keep textures at half size; the caches start over
+    // (at the next level) when that changes
+    const detail = this.mobile || s.quality === 'low' ? 0.5 : 1;
+    if (detail !== textureDetail()) {
+      setTextureDetail(detail);
+      this.cachesStale = true;
+    }
     if (qualityChanged) this.resize();
     if (this.world) this.configureEnv(this.world);
   }
@@ -150,10 +165,7 @@ export class Game {
   }
 
   buildWorld(index, { attract = false, seed = (Math.random() * 1e9) | 0, bleed = [] } = {}) {
-    if (this.world) {
-      this.world.dispose();
-      this.world = null;
-    }
+    this.disposeWorld();
     const stage = STAGES[index];
     const world = new World(this, stage, { seed, depth: attract ? 0 : this.depth, attract, lights: this.quality.lights, stages: STAGES, weights: this.stageWeights(), bleed: bleed.map((i) => STAGES[i]) });
     this.scene.add(world.root);
@@ -171,6 +183,20 @@ export class Game {
     this.staticLevel = 0;
     this.warnedSignal = false;
     return world;
+  }
+
+  /** Lets the current level go (before the next one loads, so the two never share memory). */
+  disposeWorld() {
+    if (!this.world) return;
+    this.world.dispose();
+    this.world = null;
+    // nothing is drawn until the next level is built; don't hold on to this one's sky
+    this.scene.background = null;
+    // the map and the renderer's lists from the last frame (its render items and
+    // lights) still point into the old level: clear them, or it stays in memory
+    // while the next one loads. The screen is black, so drawing the empty scene is unseen.
+    this.ui.forgetLevel();
+    this.renderer.render(this.scene, this.camera);
   }
 
   /**
@@ -195,6 +221,19 @@ export class Game {
     r.setRenderTarget(this.post.composer.readBuffer);
     const done = r.compileAsync(this.scene, this.camera);
     r.setRenderTarget(prev);
+    // upload textures now as well (one the last level used was freed with it),
+    // or the first frames would stall on them
+    const seen = new Set();
+    this.scene.traverse((o) => {
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+        for (const k in m) {
+          const t = m[k];
+          if (!t?.isTexture || t.isRenderTargetTexture || seen.has(t)) continue;
+          seen.add(t);
+          r.initTexture(t);
+        }
+      }
+    });
     for (const o of hidden) o.visible = false;
     await done;
   }
@@ -243,15 +282,17 @@ export class Game {
   async showTitle() {
     this.state = 'title';
     this.input.enabled = false;
+    const back = !!this.world;
+    this.disposeWorld();
     let index = this.randomStage();
     try {
       await this.loadLevels(index);
     } catch (err) {
       // back from a level after a new deploy replaced the level chunks: stay with one already here
-      if (!this.world) throw err;
+      if (!back) throw err;
       console.warn('Could not load a level, staying with the current one', err);
       index = this.stageIndex;
-      await this.loadLevels(index);
+      await this.reloadLevel(index);
     }
     this.buildWorld(index, { attract: true, seed: (Math.random() * 1e6) | 0 });
     await this.warmShaders();
@@ -292,8 +333,9 @@ export class Game {
     this.audio.setRumble(0);
     if (how !== 'start') this.audio.driftSound(how === 'fall' ? 'fall' : 'door');
     await this.ui.fadeOut(how === 'fall' || how === 'time');
-    // the screen is black now: stop drawing the old level while the next one loads
+    // the screen is black now: let the old level go before the next one loads
     this.loading = true;
+    this.disposeWorld();
     if (how !== 'start') this.depth++;
     let index = dest ?? this.nextStage ?? this.randomStage(this.stageIndex);
     // levels you've been through may leak into this one
@@ -302,11 +344,11 @@ export class Game {
       await this.loadLevels(index, bleed);
     } catch (err) {
       // a new deploy may have replaced the level chunks (or the network is gone):
-      // drift back into the level we are in, whose code and assets are loaded
+      // drift back into the level we were in, whose code is loaded
       console.warn('Could not load the next level, drifting back into this one', err);
       index = this.stageIndex;
       bleed = [];
-      await this.loadLevels(index, bleed);
+      await this.reloadLevel(index);
     }
     this.buildWorld(index, { bleed });
     await this.warmShaders();
@@ -329,10 +371,34 @@ export class Game {
 
   /** Loads a level's code, assets and looks, plus those its bleeding donors bring along. */
   async loadLevels(index, bleed = []) {
-    for (const i of [index, ...bleed]) {
-      const stage = await loadStage(i);
+    const stages = [];
+    for (const i of [index, ...bleed]) stages.push(await loadStage(i));
+    // before anything loads, trim what earlier levels left in the caches,
+    // keeping what these levels list (on phones, only that)
+    nextCacheLevel();
+    if (this.cachesStale) clearCaches();
+    this.cachesStale = false;
+    for (const stage of stages) retainAssets(stage.assets);
+    trimCaches(this.mobile ? 0 : CACHE_BUDGET);
+    for (const [k, stage] of stages.entries()) {
       await preload(stage.assets);
-      await prewarm(i === index ? stage.assets?.looks : stage.bleed?.looks);
+      await prewarm(k === 0 ? stage.assets?.looks : stage.bleed?.looks);
+    }
+  }
+
+  /**
+   * Loads again a level we have been in. Its code is here, but its assets may
+   * have been trimmed from the caches (always, on phones) and have to be
+   * fetched again: if the network is gone, keep trying behind the black screen.
+   */
+  async reloadLevel(index) {
+    for (let wait = 1000; ; wait = Math.min(wait * 2, 16000)) {
+      try {
+        return await this.loadLevels(index);
+      } catch (err) {
+        console.warn('Could not load the level again, retrying', err);
+        await new Promise((r) => setTimeout(r, wait));
+      }
     }
   }
 

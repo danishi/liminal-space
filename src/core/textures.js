@@ -1,14 +1,25 @@
 import * as THREE from 'three';
 import { hash2 as hash } from './rng.js';
+import { SessionCache, textureBytes } from './cache.js';
 
 // Every texture in the game is painted on a canvas at runtime, so the game
-// ships without image assets. Textures are cached by key and never disposed.
+// ships without image assets. Textures with a key are kept in a session cache.
 
-const cache = new Map();
+const cache = new SessionCache();
 let maxAniso = 4;
+// 1 = full resolution; 0.5 on phones and at low quality, where memory is tight
+let detail = 1;
 
 export function setMaxAnisotropy(n) {
   maxAniso = Math.min(8, n || 1);
+}
+
+export function setTextureDetail(d) {
+  detail = d;
+}
+
+export function textureDetail() {
+  return detail;
 }
 
 function canvas(w, h) {
@@ -18,22 +29,36 @@ function canvas(w, h) {
   return c;
 }
 
+/** A copy of an image (or canvas, or ImageBitmap) `scale` times its size. */
+export function shrinkImage(img, scale) {
+  const c = canvas(Math.max(1, Math.round(img.width * scale)), Math.max(1, Math.round(img.height * scale)));
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
 /**
- * A texture painted by draw(ctx, w, h). With a key it is cached for the
- * session (and never disposed); without one it belongs to the level that made
- * it and is freed with it.
+ * A texture painted by draw(ctx, w, h). With a key it is kept in the session
+ * cache; without one it belongs to the level that made it and is freed with it.
+ * `shrink` stores it at the texture detail (painted at full size first, so the
+ * painter needn't care): for big canvases that phones can't afford.
  */
-export function canvasTexture(key, w, h, draw, { srgb = true, repeat = false, mips = true, anisotropy = 4 } = {}) {
+export function canvasTexture(key, w, h, draw, { srgb = true, repeat = false, mips = true, anisotropy = 4, shrink = false } = {}) {
   if (key && cache.has(key)) return cache.get(key);
-  const c = canvas(w, h);
+  let c = canvas(w, h);
   draw(c.getContext('2d'), w, h);
+  if (shrink && detail < 1) {
+    const full = c;
+    c = shrinkImage(full, detail);
+    full.width = full.height = 0;
+  }
   const t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = anisotropy;
   t.generateMipmaps = mips;
-  t.userData.cached = !!key;
-  if (key) cache.set(key, t);
+  if (key) cache.set(key, t, textureBytes(t), (tex) => tex.dispose());
   return t;
 }
 

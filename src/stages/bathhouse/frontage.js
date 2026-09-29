@@ -16,7 +16,6 @@ export function frontage(world, lvl, m) {
   const kawara = kit.mat('kawara', () => {
     const t = kawaraTexture().clone();
     t.repeat.set(6, 1);
-    t.userData.cached = true;
     return new THREE.MeshStandardMaterial({ map: t, roughness: 0.45, metalness: 0.2 });
   });
   const eaveWood = kit.std(0x2a1c12, 0.6);
