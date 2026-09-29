@@ -60,8 +60,8 @@ seeded right before `buildWorld` (three.js draws uuids from it, and a few canvas
   (`const { … } = lvl` at the top, `Object.assign(lvl, { … })` at the end); keep the order, since the
   sequence of `rng` calls decides the layout.
 - `src/stages/common.js` — `buildShell`, `ceilingFixtures`, `doorModel`, `decorate`, `stairRun`, `carveMaze`.
-  Shared low-level helpers live in core: `canvasTexture` (textures.js; cached by key, or owned by the
-  level when the key is null), `GeoBuilder`/`quadPts` and `SIDES` (grid.js), `hash2`/`rngFn` (rng.js),
+  Shared low-level helpers live in core: `canvasTexture` (textures.js; kept in a session cache by
+  key, or owned by the level when the key is null), `GeoBuilder`/`quadPts` and `SIDES` (grid.js), `hash2`/`rngFn` (rng.js),
   `AudioEngine.hum`.
 - `src/props/` — `PropKit` builds props from primitives and merges static meshes per material in
   `finish()`; mark animated or individually-changing meshes with `keep()`. `library.js` holds the prop
@@ -71,10 +71,20 @@ seeded right before `buildWorld` (three.js draws uuids from it, and a few canvas
   in `assets: { textures, models, hdris }`; the game awaits `preload()` before `build`, so builders use
   the synchronous getters (`photo(id, { uvScale })`, `model(id)`, `hdri(id)`). `photo` repeats the
   texture to its real-world size given the geometry's UV scale. `PropKit.model()` and
-  `P.modelProp(id)` place models; model geometry and materials are shared (`userData.shared`) and never
-  disposed. `World.dispose` frees everything else the level made (geometry, materials, textures not
-  flagged `userData.cached`, instance buffers, skeletons, shadow maps). `BufferGeometry.clone()` copies
-  `userData` by reference, so reset it (`geo.userData = {}`) when cloning a shared geometry you own.
+  `P.modelProp(id)` place models; model geometry and materials are shared (`userData.shared`): the
+  asset cache owns them. `World.dispose` frees everything the level made (geometry, materials,
+  instance buffers, skeletons, shadow maps) and the GPU copy of every texture its materials use, cached
+  ones included (a cache keeps only the pixels, and three.js uploads a disposed texture again when it is
+  used). `BufferGeometry.clone()` copies `userData` by reference, so reset it (`geo.userData = {}`)
+  when cloning a shared geometry you own.
+- `src/core/cache.js` — memory between levels. Loaded assets, keyed `canvasTexture`s and surfaces live
+  in `SessionCache`s; before a level loads, `Game.loadLevels` keeps what the level lists in `assets`
+  and trims the rest, least recently used first, to `CACHE_BUDGET` (game.js), or to nothing on phones
+  (coarse pointer): iOS kills a tab that goes over its memory limit ("A problem repeatedly occurred").
+  The old level is disposed before the next one loads, so two levels are never in memory together.
+  On phones and at low quality the texture detail is 0.5: asset textures, HDRIs and surfaces are
+  scaled down as they load, and `canvasTexture(…, { shrink: true })` does the same for big canvases
+  that are painted in absolute pixels.
 - `src/core/surfaces.js` — procedural PBR surfaces (colour + normal + roughness), cached by key.
 - `src/core/sculpt.js` — SDF sculpting: a `Sculpt` collects primitives (`sphere`, `ellipsoid`, `cone`
   (round cone), `box`, `cyl`, `torus`, with `k` blend, `bone`, `mat` paint region, `cut`, `rot`, `clip`,

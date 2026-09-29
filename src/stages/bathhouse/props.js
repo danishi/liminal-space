@@ -159,7 +159,6 @@ export function milkFridge(k) {
       const t = capTex.clone();
       t.repeat.set(1 / 3, 1);
       t.offset.set(ci / 3, 0);
-      t.userData.cached = true;
       return new THREE.MeshStandardMaterial({ map: t, roughness: 0.6 });
     });
     for (let b = 0; b < 6; b++) {

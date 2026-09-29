@@ -62,7 +62,6 @@ export default {
       const mosaic = (key, rgb, uv, opts = {}) => {
         const map = glazeTexture(key, rgb).clone();
         map.repeat.set(uv / 2, uv / 2);
-        map.userData.cached = true;
         return { mat: photo('square_tiled_wall', { uvScale: uv, map, roughness: 0.3, ...opts }), uv };
       };
       return { wall: mosaic('wall', [226, 236, 236], 0.8, { roughness: 0.22 }), floor: mosaic('floor', [178, 198, 204], 0.55, { roughness: 0.45 }) };

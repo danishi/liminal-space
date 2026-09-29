@@ -5,7 +5,7 @@ import { PI } from './constants.js';
 // ---------------------------------------------------------------------------
 // Canvas painting
 
-export const canvasTex = (key, w, h, draw, { repeat = false } = {}) => canvasTexture(key, w, h, draw, { repeat, anisotropy: 8 });
+export const canvasTex = (key, w, h, draw, { repeat = false, shrink = false } = {}) => canvasTexture(key, w, h, draw, { repeat, anisotropy: 8, shrink });
 
 export const JP = '"Zen Kaku Gothic New", "IBM Plex Sans", "Hiragino Sans", "IPAGothic", sans-serif';
 export const SERIF = '"Hiragino Mincho ProN", "Yu Mincho", "IPAMincho", "Noto Serif JP", serif';
@@ -88,7 +88,11 @@ export function bucketTexture() {
   });
 }
 
-/** Locker fronts with numbered wooden key tags. kind: 'shoe' | 'dress'. */
+/**
+ * Locker fronts with numbered wooden key tags. kind: 'shoe' | 'dress'.
+ * Every bank is numbered differently, so there are dozens: kept at the
+ * texture detail (half size on phones).
+ */
 export function lockerTexture(kind, start, taken) {
   const key = `bath-locker:${kind}:${start}:${Math.round(taken * 10)}`;
   return canvasTex(key, 1024, 1024, (c, w, h) => {
@@ -170,7 +174,7 @@ export function lockerTexture(kind, start, taken) {
         n++;
       }
     }
-  });
+  }, { shrink: true });
 }
 
 /** Painted board / plate with lines of text. lines: [text, sizeFrac, color, weight?, font?] */

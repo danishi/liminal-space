@@ -34,14 +34,16 @@ function write(key, value) {
   }
 }
 
+/** Phones and tablets (a coarse pointer), which also get far less memory per tab. */
+export function coarsePointer() {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+}
+
 export function loadSettings() {
   const stored = read(SETTINGS_KEY) || {};
   const s = { ...DEFAULT_SETTINGS, ...stored };
-  if (!stored.quality) {
-    // First run: pick a sensible default for phones.
-    const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-    s.quality = coarse ? 'low' : 'mid';
-  }
+  // First run: pick a sensible default for phones.
+  if (!stored.quality) s.quality = coarsePointer() ? 'low' : 'mid';
   return s;
 }
 

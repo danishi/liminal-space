@@ -336,12 +336,10 @@ export class World {
       if (o.material) {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
-          if (m.userData.shared) continue;
-          for (const key in m) {
-            const t = m[key];
-            if (t?.isTexture && !t.userData.cached) t.dispose();
-          }
-          m.dispose();
+          // every texture's GPU copy goes, cached ones too: a cache keeps only
+          // the pixels, and a later level that uses them uploads them again
+          for (const key in m) if (m[key]?.isTexture) m[key].dispose();
+          if (!m.userData.shared) m.dispose();
         }
       }
     });

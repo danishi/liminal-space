@@ -224,7 +224,6 @@ export function changingRoom(world, lvl, m, s, mu, r2) {
   {
     const gm = kit.mat('steamGlass', () => {
       const t = steamGlassTexture().clone();
-      t.userData.cached = true;
       return new THREE.MeshStandardMaterial({ map: t, emissive: 0xdde8e8, emissiveMap: t, emissiveIntensity: 0.45, roughness: 0.25 });
     });
     const frame = kit.std(0x4a3222, 0.5);
